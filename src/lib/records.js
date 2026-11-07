@@ -8,11 +8,16 @@ export const EXPORT_VERSION = 1;
 export const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 
 const RECORD_FIELDS = [
-  'pageUrl', 'pageTitle', 'imageUrl', 'embedded', 'category', 'name',
+  'element', 'pageUrl', 'pageTitle', 'imageUrl', 'embedded', 'category', 'name',
   'nameSource', 'altState', 'alt', 'linkUrl', 'rating', 'ratedAt',
 ];
 const CATEGORIES = ['named', 'empty', 'none', 'hidden'];
-const NAME_SOURCES = ['aria-labelledby', 'aria-label', 'alt', 'title', 'none'];
+const NAME_SOURCES = ['aria-labelledby', 'aria-label', 'alt', 'title', 'svg-title', 'none'];
+const ELEMENTS = ['img', 'svg', 'role-img', 'input-image'];
+const ELEMENT_SUFFIX = { svg: '（svg要素）', 'role-img': '（role="img"の要素）', 'input-image': '（input type="image"）' };
+
+// 以前の版の記録には element が無いため、img とみなす
+const elementOf = (record) => record.element || 'img';
 const ALT_STATES = ['present', 'empty', 'missing'];
 const RATINGS = ['good', 'poor'];
 
@@ -80,6 +85,7 @@ export const buildExport = (records, { sites, stripQuery: strip, evaluator = '',
         for (const field of RECORD_FIELDS) {
           out[field] = record[field] === undefined ? null : record[field];
         }
+        out.element = elementOf(record);
         out.pageUrl = clean(out.pageUrl);
         out.imageUrl = clean(out.imageUrl);
         out.linkUrl = clean(out.linkUrl);
@@ -104,7 +110,8 @@ const isValidRecord = (r) =>
   NAME_SOURCES.includes(r.nameSource) &&
   ALT_STATES.includes(r.altState) &&
   RATINGS.includes(r.rating) &&
-  isString(r.ratedAt, 50);
+  isString(r.ratedAt, 50) &&
+  (r.element === undefined || ELEMENTS.includes(r.element));
 
 // 取り込むデータを検証する。項目は決めたものだけを取り出し、それ以外は捨てる
 export const validateImport = (data) => {
@@ -127,24 +134,42 @@ export const validateImport = (data) => {
     for (const field of RECORD_FIELDS) {
       out[field] = r[field];
     }
+    out.element = elementOf(r);
     records.push(out);
   }
   return { ok: true, records, rejected, evaluator };
 };
 
+// 埋め込みの画像と svg・role="img" の記録には画像のURLが無いため、要素の種類と評価した日時で区別する
+// （同じページの名前の無いアイコンの記録が、取り込んだ時に1件にまとまらないように）
 export const importedKey = (evaluator, record) =>
-  IMPORTED_PREFIX + JSON.stringify([evaluator, record.pageUrl, record.embedded ? 'embedded' : record.imageUrl, record.name]);
+  IMPORTED_PREFIX + JSON.stringify([
+    evaluator,
+    record.pageUrl,
+    record.embedded ? `${elementOf(record)}:${record.ratedAt}` : record.imageUrl,
+    record.name,
+  ]);
 
 // 評価ボックスの1行目と同じ文字（docs/contract.md の「1行目の文字」）
+const isVector = (r) => elementOf(r) === 'svg' || elementOf(r) === 'role-img';
+
 export const lineText = (r) => {
   switch (r.category) {
     case 'named':
-      return `名前：${r.name}（${r.nameSource}から）`;
+      return `名前：${r.name}（${r.nameSource === 'svg-title' ? 'title要素' : r.nameSource}から）`;
     case 'empty':
-      return '読み上げられない画像（空のalt）';
+      return isVector(r) ? '読み上げられない画像（role="presentation" か role="none"）' : '読み上げられない画像（空のalt）';
     case 'none':
-      return '名前なし（ファイル名が読み上げられる場合があります）';
+      if (elementOf(r) === 'input-image') {
+        return '名前なし（「送信」などの決まった名前で読み上げられる場合があります）';
+      }
+      return isVector(r)
+        ? '名前なし（「画像」とだけ読み上げられるか、読み飛ばされる場合があります）'
+        : '名前なし（ファイル名が読み上げられる場合があります）';
     default: {
+      if (isVector(r)) {
+        return `スクリーンリーダーに伝わらない画像（aria-hidden）。${r.name ? `名前：${r.name}` : '名前なし'}`;
+      }
       let altText = 'alt属性なし';
       if (r.altState === 'present') {
         altText = `alt：${r.alt}`;
@@ -155,3 +180,6 @@ export const lineText = (r) => {
     }
   }
 };
+
+// 設定画面の名前の列で、img 以外の要素の種類を示す
+export const elementSuffix = (r) => ELEMENT_SUFFIX[elementOf(r)] || '';

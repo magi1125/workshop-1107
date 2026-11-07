@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>svg要素とrole="img"の評価ボックス</title>
+<style>
+  .ri { display: inline-block; width: 60px; height: 60px; background: #468; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="top">svg要素とrole="img"の評価ボックス</h1>
+
+  <p><svg id="svg-big" width="120" height="80"><title>大きい図</title><rect width="120" height="80" fill="#468"/></svg></p>
+
+  <!-- ボタンとリンクの中のアイコン：いちばん外側のボタン・リンクの直後に入れる -->
+  <p><button id="svg-btn" type="button"><svg id="svg-in-btn" width="24" height="24" aria-hidden="true"><path d="M0 0h24v24H0z"/></svg> 保存</button></p>
+  <p><a id="svg-link" href="https://example.com/home"><span><svg id="svg-in-link" width="24" height="24" aria-label="ホーム"><rect width="24" height="24"/></svg></span></a></p>
+
+  <!-- role="img" の中の svg には評価ボックスを入れず、外側の要素にだけ入れる -->
+  <div id="ri-stars" role="img" aria-label="評価：星4つ" style="width: 120px; height: 60px;"><svg id="star1" width="24" height="24"><rect width="24" height="24"/></svg><svg id="star2" width="24" height="24"><rect width="24" height="24"/></svg></div>
+
+  <p><span id="ri-none" role="img" class="ri"></span></p>
+  <div id="ri-hidden-outer" aria-hidden="true"><span id="ri-hidden" role="img" aria-label="飾りの星" class="ri"></span></div>
+  <div id="svg-hidden-outer" aria-hidden="true"><svg id="svg-hidden-noname" width="60" height="60"><rect width="60" height="60"/></svg></div>
+  <p><svg id="svg-pres" role="presentation" width="60" height="60"><rect width="60" height="60"/></svg></p>
+
+  <!-- 名前の無い、別々のアイコン -->
+  <p><svg id="svg-noname-a" width="60" height="60"><path d="M0 0L60 60" stroke="#000"/></svg> <svg id="svg-noname-b" width="60" height="60"><path d="M60 0L0 60" stroke="#000"/></svg></p>
+
+  <!-- 同じ outerHTML のアイコン -->
+  <p id="same-1"><svg width="60" height="60" viewBox="0 0 60 60"><circle cx="30" cy="30" r="20"/></svg></p>
+  <p id="same-2"><svg width="60" height="60" viewBox="0 0 60 60"><circle cx="30" cy="30" r="20"/></svg></p>
+
+  <!-- 先頭4,000文字が同じで、その後が違うアイコン（下のスクリプトで作る） -->
+  <p id="long-1"></p>
+  <p id="long-2"></p>
+
+  <p><svg id="svg-small" width="20" height="20"><title>小さいアイコン</title><rect width="20" height="20"/></svg></p>
+
+  <p><input id="ii-alt" type="image" src="/img/ii-alt.png" alt="検索" width="80" height="60"></p>
+  <p><input id="ii-none" type="image" src="/img/ii-none.png" width="80" height="60"></p>
+  <div id="ii-hidden-outer" aria-hidden="true"><input id="ii-hidden" type="image" src="/img/ii-hidden.png" alt="" width="80" height="60" tabindex="-1"></div>
+
+  <p><svg id="svg-outer" width="100" height="60"><title>外側</title><svg id="svg-inner" width="40" height="40"><title>内側</title><rect width="40" height="40"/></svg></svg></p>
+
+  <p><svg id="svg-mutable" width="60" height="60" aria-label="変わる前"><rect width="60" height="60"/></svg></p>
+
+  <ul id="dyn-list"></ul>
+
+  <p><a id="foot" href="#top">ページの先頭へ</a></p>
+</main>
+<script>
+  (() => {
+    // 4,000文字を超える、ASCII だけの svg
+    const pts = [];
+    for (let i = 0; pts.join(' ').length < 4300; i++) pts.push(`L${i % 60} ${(i * 7) % 60}`);
+    const d = 'M0 0 ' + pts.join(' ');
+    const make = (r) => `<svg width="60" height="60" viewBox="0 0 60 60"><path d="${d}" stroke="#000" fill="none"/><circle cx="30" cy="30" r="${r}"/></svg>`;
+    document.getElementById('long-1').innerHTML = make(1);
+    document.getElementById('long-2').innerHTML = make(2);
+  })();
+</script>
+</body>
+</html>

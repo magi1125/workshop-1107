@@ -4,7 +4,7 @@
     "description": "拡張機能の名前"
   },
   "description": {
-    "message": "Rate how each image on a web page comes across to screen readers (good, fair or poor) while you browse, and keep a record.",
+    "message": "Rate how each image on a web page comes across to screen readers (good or poor) while you browse, and keep a record.",
     "description": "拡張機能の説明"
   }
 }

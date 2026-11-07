@@ -94,6 +94,7 @@ describe('アクセシブルネームの計算（accessible-name.js）', { timeo
       assert.equal(d.name, c.name, `#${id} の describe().name が computeName と一致しません`);
       assert.equal(d.nameSource, c.source, `#${id} の nameSource`);
       assert.equal(d.presentational, c.presentational, `#${id} の presentational`);
+      assert.equal(d.element, 'img', `#${id} の element`);
       if ('altState' in exp) assert.equal(d.altState, exp.altState, `#${id} の altState`);
       if ('alt' in exp) assert.equal(d.alt, exp.alt, `#${id} の alt`);
       if (exp.embedded) {

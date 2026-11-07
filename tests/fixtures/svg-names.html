@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>svg要素・role="img"・input type="image" の名前</title>
+<style>
+  .ico { display: inline-block; width: 40px; height: 40px; background: #555; }
+</style>
+</head>
+<body>
+<main>
+  <h1>svg要素・role="img"・input type="image" の名前</h1>
+
+  <!-- svg 要素 -->
+  <span id="svg-lby-ref">虫めがね</span>
+  <p><svg id="svg-lby" aria-labelledby="svg-lby-ref" width="40" height="40"><title>使われないtitle</title><circle cx="20" cy="20" r="10"/></svg></p>
+  <p><svg id="svg-label" aria-label="家の アイコン" width="40" height="40"><title>使われないtitle</title><rect width="40" height="40"/></svg></p>
+  <p><svg id="svg-title" width="40" height="40"><title>  星の   アイコン  </title><rect width="40" height="40"/></svg></p>
+  <p><svg id="svg-role-img" role="img" width="40" height="40"><title>売上のグラフ</title><rect width="40" height="40"/></svg></p>
+  <p><svg id="svg-gdoc" role="graphics-document" aria-label="配置図" width="40" height="40"><rect width="40" height="40"/></svg></p>
+  <p><svg id="svg-pres" role="presentation" width="40" height="40"><title>飾りのtitle</title><rect width="40" height="40"/></svg></p>
+  <p><svg id="svg-none-role" role="none" width="40" height="40"><rect width="40" height="40"/></svg></p>
+  <p><svg id="svg-pres-label" role="presentation" aria-label="ラベルがあれば名前あり" width="40" height="40"><rect width="40" height="40"/></svg></p>
+  <p><svg id="svg-nothing" width="40" height="40"><rect width="40" height="40"/></svg></p>
+  <p><svg id="svg-self-hidden" aria-hidden="true" width="40" height="40"><title>隠れたアイコン</title><rect width="40" height="40"/></svg></p>
+  <div aria-hidden="true"><svg id="svg-hidden-nothing" width="40" height="40"><rect width="40" height="40"/></svg></div>
+  <div aria-hidden="true"><svg id="svg-hidden-label" aria-label="隠れたラベル" width="40" height="40"><rect width="40" height="40"/></svg></div>
+  <p><a href="https://example.com/home"><svg id="svg-in-link" width="40" height="40"><title>ホーム</title><rect width="40" height="40"/></svg></a></p>
+  <p><svg id="svg-outer" width="80" height="40"><title>外側</title><svg id="svg-inner" x="0" width="40" height="40"><title>内側</title><rect width="40" height="40"/></svg></svg></p>
+  <p><svg id="svg-role-button" role="button" aria-label="ボタンのsvg" width="40" height="40"><rect width="40" height="40"/></svg></p>
+
+  <!-- role="img" の要素 -->
+  <span id="ri-lby-ref">晴れのち曇り</span>
+  <div id="ri-lby" role="img" aria-labelledby="ri-lby-ref" class="ico"></div>
+  <div id="ri-label" role="img" aria-label="笑顔" class="ico"></div>
+  <p><span id="ri-title" role="img" title="星3つ">★★★</span></p>
+  <p><i id="ri-nothing" role="img" class="ico"></i></p>
+  <p><span id="ri-content" role="img">中身の文字は名前にならない</span></p>
+  <p><span id="ri-multi" role="img presentation" aria-label="最初の値がimg" class="ico"></span></p>
+  <p><span id="ri-not-first" role="presentation img" aria-label="最初の値がimgでない" class="ico"></span></p>
+  <p><span id="ri-self-hidden" role="img" aria-hidden="true" aria-label="隠れた絵文字" class="ico"></span></p>
+  <div aria-hidden="true"><span id="ri-hidden-nothing" role="img" class="ico"></span></div>
+  <div id="ri-wrapper" role="img" aria-label="地図" style="width: 200px; height: 60px;">
+    <img id="ri-inner-img" src="/img/ri-inner-img.png" alt="内側の画像" width="40" height="40">
+    <svg id="ri-inner-svg" width="40" height="40"><title>内側のsvg</title><rect width="40" height="40"/></svg>
+    <span id="ri-inner-ri" role="img" aria-label="内側のrole img" class="ico"></span>
+    <input id="ri-inner-input" type="image" src="/img/ri-inner-input.png" alt="内側のボタン" width="40" height="40">
+  </div>
+
+  <!-- input type="image" -->
+  <p><input id="ii-alt" type="image" src="/img/ii-alt.png" alt="検索する" width="60" height="40"></p>
+  <p><input id="ii-label" type="image" src="/img/ii-label.png" aria-label="ラベルで送信" alt="altは使われない" width="60" height="40"></p>
+  <span id="ii-lby-ref">参照先で送信</span>
+  <p><input id="ii-lby" type="image" src="/img/ii-lby.png" aria-labelledby="ii-lby-ref" alt="altは使われない" width="60" height="40"></p>
+  <p><input id="ii-title" type="image" src="/img/ii-title.png" title="タイトルで送信" width="60" height="40"></p>
+  <p><input id="ii-nothing" type="image" src="/img/ii-nothing.png" width="60" height="40"></p>
+  <p><input id="ii-empty-alt" type="image" src="/img/ii-empty-alt.png" alt="" width="60" height="40"></p>
+  <p><input id="ii-data" type="image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" alt="埋め込みのボタン" width="60" height="40"></p>
+  <p><a href="https://example.com/go"><input id="ii-in-link" type="image" src="/img/ii-in-link.png" alt="リンクの中" width="60" height="40"></a></p>
+  <div aria-hidden="true"><input id="ii-hidden" type="image" src="/img/ii-hidden.png" alt="隠れたボタン" width="60" height="40"></div>
+
+  <!-- 対象にしない要素 -->
+  <p><input id="text-input" type="text" aria-label="文字の入力"></p>
+  <div id="plain-div" aria-label="ただのdiv" class="ico"></div>
+</main>
+</body>
+</html>

@@ -120,6 +120,26 @@ describe('records.js（buildExport・validateImport）', { timeout: 120000 }, ()
       assert.deepEqual(r.records.map((x) => x.name), ['A1']);
     });
 
+    test('element（svg・role-img・input-image）をそのまま書き出す', async () => {
+      const svg = makeRecord({
+        pageUrl: 'https://a.example/icons',
+        element: 'svg',
+        imageUrl: null,
+        embedded: true,
+        name: '検索',
+        nameSource: 'svg-title',
+        alt: null,
+        altState: 'missing',
+      });
+      const ri = makeRecord({ pageUrl: 'https://a.example/icons', element: 'role-img', imageUrl: null, embedded: true, name: '星', nameSource: 'title', alt: null, altState: 'missing' });
+      const ii = makeRecord({ pageUrl: 'https://a.example/icons', element: 'input-image', name: '送信', alt: '送信' });
+      const r = await buildExport([svg, ri, ii], { sites: ['a.example'], stripQuery: false, evaluator: '', now: NOW });
+      assert.equal(r.records.length, 3);
+      for (const x of r.records) assert.deepEqual(Object.keys(x).sort(), [...RECORD_FIELDS].sort());
+      assert.deepEqual(r.records.map((x) => x.element).sort(), ['input-image', 'role-img', 'svg']);
+      assert.equal(r.version, 1, 'version は1のまま');
+    });
+
     test('元の記録を書き換えない', async () => {
       if (mode !== 'node') return;
       const copy = { ...structuredClone(a1), source: 'own' };
@@ -214,6 +234,16 @@ describe('records.js（buildExport・validateImport）', { timeout: 120000 }, ()
       ['category が不明', { category: 'decorative' }, false],
       ['nameSource が aria-labelledby', { nameSource: 'aria-labelledby' }, true],
       ['nameSource が不明', { nameSource: 'figcaption' }, false],
+      // 契約「svg要素、role="img"の要素、input type="image"」
+      ['nameSource が svg-title', { nameSource: 'svg-title', element: 'svg' }, true],
+      ['element が svg', { element: 'svg', imageUrl: null, embedded: true, alt: null, altState: 'missing' }, true],
+      ['element が role-img', { element: 'role-img', imageUrl: null, embedded: true, alt: null, altState: 'missing' }, true],
+      ['element が input-image', { element: 'input-image' }, true],
+      ['element が無い（img とみなす）', { element: undefined }, true],
+      ['element が不明な値（canvas）', { element: 'canvas' }, false],
+      ['element が大文字の SVG', { element: 'SVG' }, false],
+      ['element が数値', { element: 1 }, false],
+      ['element が空文字列', { element: '' }, false],
       ['altState が missing', { altState: 'missing' }, true],
       ['altState が不明', { altState: 'blank' }, false],
       ['rating が poor', { rating: 'poor' }, true],
@@ -233,6 +263,44 @@ describe('records.js（buildExport・validateImport）', { timeout: 120000 }, ()
         assert.equal(r.rejected, accepted ? 0 : 1);
       });
     }
+
+    test('element が無い記録は、element: "img" として返す（13項目）', async () => {
+      const rec = ok();
+      delete rec.element;
+      const r = await validateImport(file([rec]));
+      assert.equal(r.ok, true);
+      assert.equal(r.records.length, 1);
+      assert.equal(r.records[0].element, 'img', `element：${JSON.stringify(r.records[0])}`);
+      assert.deepEqual(Object.keys(r.records[0]).sort(), [...RECORD_FIELDS].sort());
+    });
+
+    test('svg・role-img・input-image の記録は element をそのまま返す', async () => {
+      const svg = makeRecord({
+        pageUrl: 'https://z.example/p',
+        element: 'svg',
+        imageUrl: null,
+        embedded: true,
+        name: '家のアイコン',
+        nameSource: 'svg-title',
+        alt: null,
+        altState: 'missing',
+      });
+      const ri = makeRecord({
+        pageUrl: 'https://z.example/p',
+        element: 'role-img',
+        imageUrl: null,
+        embedded: true,
+        category: 'none',
+        name: '',
+        nameSource: 'none',
+        alt: null,
+        altState: 'missing',
+      });
+      const ii = makeRecord({ pageUrl: 'https://z.example/p', element: 'input-image', name: '送信', alt: '送信' });
+      const r = await validateImport(file([svg, ri, ii]));
+      assert.equal(r.rejected, 0);
+      assert.deepEqual(r.records.map(pickRecord), [svg, ri, ii]);
+    });
 
     test('記録がオブジェクトでない（null・文字列・数値）なら取り込まず、数に入れる', async () => {
       const r = await validateImport(file([ok(), null, 'x', 1]));

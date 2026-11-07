@@ -1,4 +1,4 @@
-// 画像のアクセシブルネームの計算と、伝わり方の分類（docs/contract.md の「globalThis.AltEvalName」）
+// 画像のアクセシブルネームの計算と、伝わり方の分類（docs/contract.md の「globalThis.AltEvalName」と「svg要素、role="img"の要素、input type="image"」）
 'use strict';
 
 (() => {
@@ -7,51 +7,103 @@
     return;
   }
 
+  const SVG_ROLES = ['', 'img', 'graphics-document', 'presentation', 'none'];
+  const BOX_TAG = 'alt-eval-box';
+
   // 連続する空白を1つにまとめ、前後の空白を削る
   const normalize = (text) => (text || '').replace(/\s+/g, ' ').trim();
 
-  const firstRole = (img) => normalize(img.getAttribute('role')).toLowerCase().split(' ')[0];
+  const firstRole = (el) => normalize(el.getAttribute('role')).toLowerCase().split(' ')[0];
+
+  // 要素の種類（img・svg・role-img・input-image）。対象でなければ null
+  const kindOf = (el) => {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) {
+      return null;
+    }
+    const name = el.localName;
+    if (name === 'img') {
+      return 'img';
+    }
+    if (name === 'svg') {
+      return SVG_ROLES.includes(firstRole(el)) ? 'svg' : null;
+    }
+    if (name === 'input' && (el.getAttribute('type') || '').toLowerCase() === 'image') {
+      return 'input-image';
+    }
+    return firstRole(el) === 'img' ? 'role-img' : null;
+  };
+
+  // 対象の候補か。ほかの svg の中の svg、role="img" の中の要素、評価ボックスの中の要素は除く
+  const isCandidate = (el) => {
+    if (!kindOf(el)) {
+      return false;
+    }
+    // 評価ボックスのシャドウDOMの中の要素は除く（closest はシャドウの境界を越えないため、ルートを確かめる）
+    const root = el.getRootNode();
+    if (root instanceof ShadowRoot && root.host.localName === BOX_TAG) {
+      return false;
+    }
+    for (let node = el.parentElement; node; node = node.parentElement) {
+      if (node.localName === BOX_TAG) {
+        return false;
+      }
+      if (node.localName === 'svg' && el.localName === 'svg') {
+        return false;
+      }
+      if (firstRole(node) === 'img') {
+        return false;
+      }
+    }
+    return true;
+  };
 
   // aria-labelledby が指す要素の文字列。各要素の aria-label、無ければ textContent を使う
-  const labelledByText = (img) => {
-    const ids = normalize(img.getAttribute('aria-labelledby'));
+  const labelledByText = (el) => {
+    const ids = normalize(el.getAttribute('aria-labelledby'));
     if (!ids) {
       return '';
     }
-    const doc = img.ownerDocument;
+    const doc = el.ownerDocument;
     return ids
       .split(' ')
       .map((id) => doc.getElementById(id))
       .filter(Boolean)
-      .map((el) => normalize(el.getAttribute('aria-label')) || normalize(el.textContent))
+      .map((ref) => normalize(ref.getAttribute('aria-label')) || normalize(ref.textContent))
       .filter(Boolean)
       .join(' ');
   };
 
-  const computeName = (img) => {
-    const labelledBy = labelledByText(img);
+  const named = (name, source) => ({ name, source, presentational: false });
+  const EMPTY = Object.freeze({ name: '', source: 'none', presentational: false });
+
+  const computeName = (el) => {
+    const labelledBy = labelledByText(el);
     if (labelledBy) {
-      return { name: labelledBy, source: 'aria-labelledby', presentational: false };
+      return named(labelledBy, 'aria-labelledby');
     }
-    const label = normalize(img.getAttribute('aria-label'));
+    const label = normalize(el.getAttribute('aria-label'));
     if (label) {
-      return { name: label, source: 'aria-label', presentational: false };
+      return named(label, 'aria-label');
     }
-    const role = firstRole(img);
-    if (role === 'presentation' || role === 'none') {
+    const kind = kindOf(el);
+    const role = firstRole(el);
+    if ((kind === 'img' || kind === 'svg') && (role === 'presentation' || role === 'none')) {
       return { name: '', source: 'none', presentational: true };
     }
-    if (img.hasAttribute('alt')) {
-      const alt = normalize(img.getAttribute('alt'));
-      return alt
-        ? { name: alt, source: 'alt', presentational: false }
-        : { name: '', source: 'none', presentational: false };
+    if (kind === 'svg') {
+      const title = [...el.children].find((child) => child.localName === 'title');
+      const text = title ? normalize(title.textContent) : '';
+      return text ? named(text, 'svg-title') : EMPTY;
     }
-    const title = normalize(img.getAttribute('title'));
-    if (title) {
-      return { name: title, source: 'title', presentational: false };
+    if ((kind === 'img' || kind === 'input-image') && el.hasAttribute('alt')) {
+      const alt = normalize(el.getAttribute('alt'));
+      // img の空の alt は、title を見ずに名前を空にする
+      if (alt || kind === 'img') {
+        return alt ? named(alt, 'alt') : EMPTY;
+      }
     }
-    return { name: '', source: 'none', presentational: false };
+    const title = normalize(el.getAttribute('title'));
+    return title ? named(title, 'title') : EMPTY;
   };
 
   // aria-hidden="true" が付いた、いちばん外側の祖先（自分自身を含む）
@@ -65,43 +117,52 @@
     return found;
   };
 
-  const describe = (img) => {
-    const { name, source, presentational } = computeName(img);
-    const hasAlt = img.hasAttribute('alt');
-    const alt = hasAlt ? img.getAttribute('alt') : null;
+  const describe = (el) => {
+    const element = kindOf(el) || 'img';
+    const { name, source, presentational } = computeName(el);
+    const hasAltAttribute = (element === 'img' || element === 'input-image') && el.hasAttribute('alt');
+    const alt = hasAltAttribute ? el.getAttribute('alt') : null;
     let altState = 'missing';
-    if (hasAlt) {
+    if (hasAltAttribute) {
       altState = normalize(alt) ? 'present' : 'empty';
     }
 
     let category;
-    if (outermostHidden(img)) {
+    if (outermostHidden(el)) {
       category = 'hidden';
     } else if (name) {
       category = 'named';
-    } else if (hasAlt || presentational) {
+    } else if (presentational || (element === 'img' && hasAltAttribute)) {
       category = 'empty';
     } else {
       category = 'none';
     }
 
-    const src = img.currentSrc || img.getAttribute('src') || '';
-    const embedded = /^(data|blob):/i.test(src);
-    const link = img.closest('a[href]');
+    let imageUrl = null;
+    let embedded = true;
+    if (element === 'img' || element === 'input-image') {
+      const raw = element === 'img' ? (el.currentSrc || el.getAttribute('src') || '') : (el.getAttribute('src') || '');
+      embedded = /^(data|blob):/i.test(raw);
+      if (!embedded) {
+        imageUrl = element === 'img' ? (el.currentSrc || el.src || '') : (el.src || '');
+      }
+    }
+    const link = el.closest('a[href]');
 
     return {
+      element,
       category,
       name,
       nameSource: source,
       presentational,
       altState,
       alt,
-      role: firstRole(img),
-      imageUrl: embedded ? null : (img.currentSrc || img.src || ''),
+      role: firstRole(el),
+      imageUrl,
       embedded,
       linkUrl: link ? link.href : null,
     };
   };
 
-  globalThis.AltEvalName = Object.freeze({ computeName, describe, outermostHidden });
+  globalThis.AltEvalName = Object.freeze({ computeName, describe, outermostHidden, isCandidate, kindOf });
 })();

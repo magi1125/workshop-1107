@@ -289,3 +289,78 @@ manifest.json には次を加えます。権限（`permissions`）は増やし�
 | `ratedAt` | 文字列。50文字以下 |
 
 ファイルの `evaluator` は、文字列で100文字以下の時だけ使う。それ以外は空文字列にする。
+
+---
+
+# svg要素、role="img"の要素、input type="image"
+
+評価の対象を、`img` 要素のほかに次の要素へ広げます。この節の規則は、上の節の規則より優先します。
+
+## 対象にする要素
+
+| 種類（`element`） | 要素 |
+|---|---|
+| `img` | `img` 要素 |
+| `svg` | `svg` 要素（`role` が無いか、`img`・`graphics-document`・`presentation`・`none` のもの） |
+| `role-img` | `role` の最初の値が `img` の要素（`svg` 要素を除く） |
+| `input-image` | `input type="image"` |
+
+次の要素は対象にしません。
+
+- ほかの `svg` 要素の中の `svg` 要素
+- `role="img"` の要素の中にある、対象の要素（`role="img"` の中身はスクリーンリーダーに伝わらず、外側の要素だけが1枚の画像として伝わるため）
+- 評価ボックスの中の要素
+
+`globalThis.AltEvalName` に、要素が対象の候補かを返す `isCandidate(el)` を加えます。`computeName` と `describe` は、上の4種類の要素を受け取ります。
+
+## アクセシブルネーム
+
+| 種類 | 名前を決める順番 |
+|---|---|
+| `img` | これまでどおり |
+| `svg` | `aria-labelledby` → `aria-label` → `role` が `presentation`・`none` なら空 → 子の `title` 要素の文字（`source` は `svg-title`） |
+| `role-img` | `aria-labelledby` → `aria-label` → `title` 属性 |
+| `input-image` | `aria-labelledby` → `aria-label` → `alt` → `title` 属性 |
+
+`source` の値に `svg-title` を加えます。
+
+`input-image` の名前が空の時（alt属性が無い、または空）は、alt属性があっても `empty` ではなく `none` に分類します。Chromiumは、名前の無い `input type="image"` を読み飛ばさず、「送信」（英語の環境では「Submit」）という決まった名前のボタンとして読み上げるためです。
+
+分類（`category`）の決め方は、これまでどおりです。`svg` と `role-img` には alt が無いため、名前が空なら、`role` が `presentation`・`none` の時は `empty`、それ以外は `none` にします。
+
+## describe の戻り値
+
+これまでの項目に、`element`（上の表の種類）を加えます。`img` 以外の要素では次のようにします。
+
+| 項目 | `svg`・`role-img` | `input-image` |
+|---|---|---|
+| `alt`、`altState` | `null`、`'missing'` | `img` と同じ |
+| `imageUrl`、`embedded` | `null`、`true` | `src` 属性の絶対URL、`false`（`data:`・`blob:` なら `img` と同じ） |
+
+## 1行目の文字
+
+- `named`：`名前：{name}（{出どころ}から）`。出どころは、`svg-title` の時だけ「title要素」と書き、それ以外は `nameSource` の値をそのまま書く
+- `none`：`img` はこれまでどおり。`input-image` は `名前なし（「送信」などの決まった名前で読み上げられる場合があります）`。`svg`・`role-img` は `名前なし（「画像」とだけ読み上げられるか、読み飛ばされる場合があります）`
+- `hidden`：`img`・`input-image` はこれまでどおり。`svg`・`role-img` は `スクリーンリーダーに伝わらない画像（aria-hidden）。` の後に、名前があれば `名前：{name}`、無ければ `名前なし`。この時の名前は、`aria-hidden` を無視して上の順番で求める
+
+## 保存のキー
+
+`imageKey` を次のようにします。`img` の規則はこれまでどおりです。
+
+| 種類 | `imageKey` |
+|---|---|
+| `img` | `imageUrl`。`embedded` なら `'embedded'` |
+| `input-image` | `img` と同じ |
+| `svg`、`role-img` | `'{element}:' + hash`。`hash` は、要素を複製し、自分と子孫の `id`・`class`・`style` 属性を除いた `outerHTML` の先頭4,000文字の FNV-1a（32ビット、UTF-16のコード単位ごと）を、小文字の16進数8桁で表したもの。`id`・`class`・`style` を除くのは、読み込みのたびや、マウスを重ねた時に変わりやすく、保存した評価が表示されなくなるため |
+
+`svg` と `role-img` には画像のURLが無く、名前の無いアイコンが同じページに何個もあると、`'embedded'` では区別できないためです。
+
+## 保存する記録と、書き出し・取り込み
+
+- 記録の値に `element` を加えます（13項目）
+- 書き出すファイルの記録にも `element` を入れます。`version` は1のままです
+- 取り込みでは、`element` が無い記録は `img` とみなします。ある時は、上の4種類のどれかでなければ取り込みません
+- `nameSource` の検証の候補に `svg-title` を加えます
+- 取り込んだ記録のキーの `imageKey` は、`embedded` の記録では `'{element}:{ratedAt}'` にする。書き出すファイルには `svg` のハッシュが入らず、同じページの名前の無いアイコンの記録が1件にまとまってしまうため
+- 設定画面の記録の表では、画像の列で、`svg`・`role-img` の記録は「画像のURLはありません」と表示する。`empty` の記録の1行目は、`svg`・`role-img` では「読み上げられない画像（role="presentation" か role="none"）」にする
+- 設定画面の記録の表では、名前の列で、`img` 以外の記録の1行目の後に「（svg要素）」「（role="img"の要素）」「（input type="image"）」を加えます

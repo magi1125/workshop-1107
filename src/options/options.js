@@ -1,7 +1,7 @@
 // 設定画面：記録の一覧、書き出し、取り込み、評価モードの設定、使わないサイト（docs/contract.md）
 import {
   listRecords, countBySite, buildExport, exportFileName, validateImport, importedKey,
-  hostOf, isWebUrl, lineText, MAX_IMPORT_BYTES,
+  hostOf, isWebUrl, lineText, elementSuffix, MAX_IMPORT_BYTES,
 } from '../lib/records.js';
 import {
   getSettings, updateSettings, setExcluded, enableDefaultOn, disableDefaultOn,
@@ -61,6 +61,10 @@ const pageCell = (record) => {
 // 画像は、利用者が押した時だけ読み込む（画像を置いているサーバーに、勝手にアクセスしないため）
 const imageCell = (record) => {
   const cell = el('td');
+  if (record.element === 'svg' || record.element === 'role-img') {
+    cell.append(el('span', '画像のURLはありません'));
+    return cell;
+  }
   if (record.embedded) {
     cell.append(el('span', '埋め込みの画像'));
     return cell;
@@ -112,7 +116,7 @@ const renderRecords = () => {
     const row = el('tr');
     row.append(
       el('td', RATING_TEXT[record.rating] || record.rating),
-      el('td', lineText(record)),
+      el('td', lineText(record) + elementSuffix(record)),
       pageCell(record),
       imageCell(record),
       el('td', record.source === 'own' ? '自分' : (record.evaluator || '名前なし')),

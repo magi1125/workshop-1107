@@ -11,7 +11,7 @@
   /** 契約の規則で、評価ボックスを挿入する基準の要素を求める */
   function anchorFor(img) {
     let anchor = img;
-    if (img.parentElement && img.parentElement.localName === 'picture') anchor = img.parentElement;
+    if (img.localName === 'img' && img.parentElement && img.parentElement.localName === 'picture') anchor = img.parentElement;
     let outerControl = null;
     for (let el = anchor.parentElement; el; el = el.parentElement) {
       if (el.matches(CONTROL_SELECTOR)) outerControl = el;
@@ -29,9 +29,40 @@
     return anchor;
   }
 
-  /** 評価の対象になる画像（表示されている、メインの document の img） */
+  /** role の最初の値（小文字） */
+  function firstRole(el) {
+    return (el.getAttribute('role') || '').trim().split(/\s+/)[0].toLowerCase();
+  }
+
+  /**
+   * 契約「svg要素、role="img"の要素、input type="image"」の種類（element）。対象でなければ null。
+   * テスト側で独自に求める（実装の isCandidate は使わない）
+   */
+  function elementKind(el) {
+    if (!el || el.nodeType !== 1) return null;
+    if (el.closest('alt-eval-box')) return null;
+    let kind = null;
+    if (el.localName === 'img' && el.namespaceURI === 'http://www.w3.org/1999/xhtml') kind = 'img';
+    else if (el.localName === 'svg' && el.namespaceURI === 'http://www.w3.org/2000/svg') {
+      const role = (el.getAttribute('role') || '').trim().toLowerCase();
+      if (role === '' || ['img', 'graphics-document', 'presentation', 'none'].includes(role)) kind = 'svg';
+    } else if (el.localName === 'input' && (el.getAttribute('type') || '').toLowerCase() === 'image') kind = 'input-image';
+    else if (firstRole(el) === 'img') kind = 'role-img';
+    if (!kind) return null;
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      // ほかの svg の中の svg
+      if (kind === 'svg' && p.localName === 'svg' && p.namespaceURI === 'http://www.w3.org/2000/svg') return null;
+      // role="img" の要素の中にある要素
+      if (firstRole(p) === 'img') return null;
+    }
+    return kind;
+  }
+
+  /** 評価の対象になる要素（表示されている、メインの document の img・svg・role="img"・input type="image"） */
   function targetImages() {
-    return Array.from(document.querySelectorAll('img')).filter((img) => img.getClientRects().length > 0);
+    return Array.from(document.querySelectorAll('img, svg, [role], input')).filter(
+      (el) => elementKind(el) && el.getClientRects().length > 0,
+    );
   }
 
   /** 画像に対応する評価ボックス。基準の要素の直後に、同じ基準の画像の順で並ぶ */
@@ -227,7 +258,7 @@
 }
 
   window.__t = {
-    boxes, anchorFor, boxFor, targetImages, state, deepActive, describeActive, cleanHTML, liveText, norm, contrast,
+    boxes, anchorFor, boxFor, targetImages, elementKind, state, deepActive, describeActive, cleanHTML, liveText, norm, contrast,
     visuallyShown, textShown, textNodes, visibleRectOf,
   };
 })();

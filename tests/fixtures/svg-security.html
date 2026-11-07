@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>svgの文字列の扱い</title>
+<style>
+  .ri { display: inline-block; width: 60px; height: 60px; background: #468; }
+</style>
+</head>
+<body>
+<main>
+  <h1>svg要素とrole="img"の文字列の扱い</h1>
+  <p><svg id="xss-svg-title" width="60" height="60"><title>&lt;img src=x onerror="window.__pwned=1"&gt;</title><rect width="60" height="60"/></svg></p>
+  <p><svg id="xss-svg-label" aria-label='"&gt;&lt;script&gt;window.__pwned=2&lt;/script&gt;' width="60" height="60"><rect width="60" height="60"/></svg></p>
+  <p><span id="xss-ri" role="img" aria-label='&lt;img src=x onerror="window.__pwned=3"&gt;' class="ri"></span></p>
+  <p><input id="xss-ii" type="image" src="/img/xss-ii.png" alt='&lt;svg onload="window.__pwned=4"&gt;&lt;/svg&gt;' width="80" height="60"></p>
+  <div aria-hidden="true"><svg id="xss-svg-hidden" width="60" height="60"><title>&lt;iframe srcdoc="&lt;script&gt;parent.__pwned=5&lt;/script&gt;"&gt;&lt;/iframe&gt;</title><rect width="60" height="60"/></svg></div>
+</main>
+</body>
+</html>

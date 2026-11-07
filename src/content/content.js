@@ -6,7 +6,22 @@
   if (Object.hasOwn(globalThis, '__altEvalContent')) {
     return;
   }
-  const { describe, outermostHidden } = globalThis.AltEvalName;
+  const { describe, outermostHidden, isCandidate, kindOf } = globalThis.AltEvalName;
+
+  // 評価の対象の候補を集める（img、svg、role="img" の要素、input type="image"）
+  const CANDIDATE_SELECTOR = 'img, svg, input[type="image" i], [role~="img" i]';
+  const candidatesIn = (root) => {
+    const found = [];
+    if (root.nodeType === Node.ELEMENT_NODE && isCandidate(root)) {
+      found.push(root);
+    }
+    for (const el of root.querySelectorAll(CANDIDATE_SELECTOR)) {
+      if (isCandidate(el)) {
+        found.push(el);
+      }
+    }
+    return found;
+  };
 
   const BOX_TAG = 'alt-eval-box';
   const LIVE_TAG = 'alt-eval-live';
@@ -16,7 +31,7 @@
     { value: 'poor', label: '悪い', symbol: '×' },
   ];
   const INTERACTIVE = 'a[href], button, summary, label, [role="button"], [role="link"]';
-  const WATCHED_ATTRIBUTES = ['alt', 'aria-label', 'aria-labelledby', 'title', 'role', 'src', 'srcset'];
+  const WATCHED_ATTRIBUTES = ['alt', 'aria-label', 'aria-labelledby', 'title', 'role', 'src', 'srcset', 'type'];
   // 表示の切り替え（タブ、アコーディオン、details など）で変わる属性
   const DISPLAY_ATTRIBUTES = ['class', 'style', 'hidden', 'open', 'aria-hidden', 'inert'];
   const RECHECK_DELAY = 200;
@@ -157,7 +172,36 @@
 
   const pageUrl = () => location.href.split('#')[0];
 
-  const storageKey = (info) => 'r:' + JSON.stringify([pageUrl(), info.embedded ? 'embedded' : info.imageUrl, info.name]);
+  // FNV-1a（32ビット）を16進数8桁で返す
+  const fnv1a = (text) => {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < text.length; i += 1) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return hash.toString(16).padStart(8, '0');
+  };
+
+  // ハッシュを求める元の文字列。読み込みのたびに変わりやすい id・class・style 属性を除く
+  const fingerprint = (el) => {
+    const clone = el.cloneNode(true);
+    for (const node of [clone, ...clone.querySelectorAll('*')]) {
+      node.removeAttribute('id');
+      node.removeAttribute('class');
+      node.removeAttribute('style');
+    }
+    return clone.outerHTML.slice(0, 4000);
+  };
+
+  // svg と role="img" の要素には画像のURLが無いため、要素の中身の要約で区別する
+  const imageKeyOf = (el, info) => {
+    if (info.element === 'svg' || info.element === 'role-img') {
+      return `${info.element}:${fnv1a(fingerprint(el))}`;
+    }
+    return info.embedded ? 'embedded' : info.imageUrl;
+  };
+
+  const storageKey = (el, info) => 'r:' + JSON.stringify([pageUrl(), imageKeyOf(el, info), info.name]);
 
   // ページのCSSの影響を受けないよう、ホスト要素の表示に関わる値を直接指定する
   const setHostStyle = (host, compact) => {
@@ -191,14 +235,22 @@
   const lineText = (info) => {
     switch (info.category) {
       case 'named':
-        return `名前：${info.name}（${info.nameSource}から）`;
+        return `名前：${info.name}（${info.nameSource === 'svg-title' ? 'title要素' : info.nameSource}から）`;
       case 'empty':
         return info.presentational
           ? `読み上げられない画像（role="${info.role}"）`
           : '読み上げられない画像（空のalt）';
       case 'none':
-        return '名前なし（ファイル名が読み上げられる場合があります）';
+        if (info.element === 'input-image') {
+          return '名前なし（「送信」などの決まった名前で読み上げられる場合があります）';
+        }
+        return info.element === 'svg' || info.element === 'role-img'
+          ? '名前なし（「画像」とだけ読み上げられるか、読み飛ばされる場合があります）'
+          : '名前なし（ファイル名が読み上げられる場合があります）';
       default: {
+        if (info.element === 'svg' || info.element === 'role-img') {
+          return `スクリーンリーダーに伝わらない画像（aria-hidden）。${info.name ? `名前：${info.name}` : '名前なし'}`;
+        }
         let altText = 'alt属性なし';
         if (info.altState === 'present') {
           altText = `alt：${info.alt}`;
@@ -362,7 +414,7 @@
     group.setAttribute('role', 'group');
     group.setAttribute('aria-label', '直前の画像の評価');
 
-    const box = { img, host, info, key: storageKey(info), rating: null, compact: false, lineDismissed: false, ratingButtons: [] };
+    const box = { img, host, info, key: storageKey(img, info), rating: null, compact: false, lineDismissed: false, ratingButtons: [] };
 
     for (const { value, label, symbol } of RATINGS) {
       const button = document.createElement('button');
@@ -562,7 +614,7 @@
   // 対象にするのは、画面に表示されているか、スクリーンリーダーに伝わる画像。
   // 誰にも伝わらない画像（display: none、visibility: hidden、aria-hidden かつ完全に隠れている画像）は対象にしない
   const isTarget = (img) => {
-    if (!img.isConnected || img.closest(BOX_TAG) || img.getClientRects().length === 0) {
+    if (!img.isConnected || !isCandidate(img) || img.getClientRects().length === 0) {
       return false;
     }
     const visibility = getComputedStyle(img).visibility;
@@ -622,7 +674,7 @@
     }
     for (const box of boxes) {
       box.info = describe(box.img);
-      box.key = storageKey(box.info);
+      box.key = storageKey(box.img, box.info);
     }
     let stored = {};
     try {
@@ -686,11 +738,14 @@
       if (!root.isConnected) {
         continue;
       }
-      if (root.localName === 'img') {
-        imgs.add(root);
-      }
-      for (const img of root.querySelectorAll('img')) {
+      for (const img of candidatesIn(root)) {
         imgs.add(img);
+      }
+      // role="img" を外した時など、対象でなくなった要素の評価ボックスも調べ直す
+      for (const img of state.boxes.keys()) {
+        if (root === img || root.contains(img)) {
+          imgs.add(img);
+        }
       }
     }
     state.recheckRoots.clear();
@@ -735,6 +790,18 @@
     }
   };
 
+  // 変化が svg の title 要素の中で起きていれば、その svg を返す
+  const svgOfTitleChange = (mutation) => {
+    const target = mutation.target.nodeType === Node.ELEMENT_NODE ? mutation.target : mutation.target.parentElement;
+    if (!target) {
+      return null;
+    }
+    const nodes = [...mutation.addedNodes, ...mutation.removedNodes];
+    const touchesTitle = target.closest('title') || nodes.some((node) => node.localName === 'title');
+    const svg = touchesTitle ? target.closest('svg') : null;
+    return svg && isCandidate(svg) ? svg : null;
+  };
+
   const onMutations = (mutations) => {
     const imgs = [];
     let removed = false;
@@ -744,21 +811,26 @@
         if (isOurs(target)) {
           continue;
         }
-        if (target.localName === 'img' && WATCHED_ATTRIBUTES.includes(mutation.attributeName)) {
+        if (kindOf(target) && WATCHED_ATTRIBUTES.includes(mutation.attributeName)) {
           imgs.push(target);
         } else {
           scheduleRecheck(target);
         }
         continue;
       }
+      // svg の title 要素の文字が変わったら、その svg の評価ボックスを作り直す（ほかの子の変化では作り直さない）
+      const titleSvg = svgOfTitleChange(mutation);
+      if (titleSvg) {
+        imgs.push(titleSvg);
+      }
+      if (mutation.type === 'characterData') {
+        continue;
+      }
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE || isOurs(node)) {
           continue;
         }
-        if (node.localName === 'img') {
-          imgs.push(node);
-        }
-        imgs.push(...node.querySelectorAll('img'));
+        imgs.push(...candidatesIn(node));
       }
       for (const node of mutation.removedNodes) {
         if (node.nodeType === Node.ELEMENT_NODE && !isOurs(node)) {
@@ -802,11 +874,12 @@
     }
     const next = box.rating === value ? null : value;
     const info = describe(box.img);
-    const key = storageKey(info);
+    const key = storageKey(box.img, info);
     try {
       if (next) {
         await chrome.storage.local.set({
           [key]: {
+            element: info.element,
             pageUrl: pageUrl(),
             pageTitle: document.title,
             imageUrl: info.imageUrl,
@@ -875,6 +948,7 @@
       subtree: true,
       attributes: true,
       attributeFilter: [...WATCHED_ATTRIBUTES, ...DISPLAY_ATTRIBUTES],
+      characterData: true,
     });
     state.intersection = new IntersectionObserver(onIntersection, { rootMargin: NEAR_MARGIN });
     state.resize = new ResizeObserver(repositionAll);
@@ -887,7 +961,7 @@
     }
     addEventListener('scroll', repositionAll, { capture: true, passive: true });
     addEventListener('resize', repositionAll, { passive: true });
-    for (const img of document.querySelectorAll('img')) {
+    for (const img of candidatesIn(document.documentElement)) {
       state.pending.add(img);
     }
     await flush();

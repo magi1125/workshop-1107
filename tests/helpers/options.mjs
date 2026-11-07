@@ -16,16 +16,26 @@ export const RECORD_FIELDS = [
   'linkUrl',
   'rating',
   'ratedAt',
+  // 契約「svg要素、role="img"の要素、input type="image"」で加わった項目（13項目）
+  'element',
 ];
 
+/** 記録の imageKey。svg と role-img はハッシュが必要なので、呼ぶ側が imageKey を渡す */
+function imageKeyOf(rec, imageKey) {
+  if (imageKey !== undefined) return imageKey;
+  return rec.embedded ? 'embedded' : rec.imageUrl;
+}
+
 /** 自分の評価のキー（契約の形式） */
-export function ownKey(rec) {
-  return 'r:' + JSON.stringify([rec.pageUrl, rec.embedded ? 'embedded' : rec.imageUrl, rec.name]);
+export function ownKey(rec, imageKey) {
+  return 'r:' + JSON.stringify([rec.pageUrl, imageKeyOf(rec, imageKey), rec.name]);
 }
 
 /** 取り込んだ評価のキー（契約の形式） */
-export function importedKey(evaluator, rec) {
-  return 'i:' + JSON.stringify([evaluator, rec.pageUrl, rec.embedded ? 'embedded' : rec.imageUrl, rec.name]);
+export function importedKey(evaluator, rec, imageKey) {
+  // 取り決め：埋め込みの記録は '{element}:{ratedAt}'
+  const key = imageKey !== undefined ? imageKey : rec.embedded ? `${rec.element || 'img'}:${rec.ratedAt}` : rec.imageUrl;
+  return 'i:' + JSON.stringify([evaluator, rec.pageUrl, key, rec.name]);
 }
 
 /** 記録の値を、決めた項目だけにする */
@@ -48,6 +58,7 @@ export function makeRecord(over = {}) {
     linkUrl: null,
     rating: 'good',
     ratedAt: '2026-11-01T10:00:00.000Z',
+    element: 'img',
     ...over,
   };
 }

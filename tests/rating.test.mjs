@@ -16,6 +16,7 @@ const RECORD_KEYS = [
   'linkUrl',
   'rating',
   'ratedAt',
+  'element',
 ].sort();
 
 const ratingRecords = (all) => Object.fromEntries(Object.entries(all).filter(([k]) => k.startsWith('r:')));
@@ -80,6 +81,7 @@ describe('評価と保存', { timeout: 180000 }, () => {
       alt: '次の記事へ',
       linkUrl: 'https://example.com/next',
       rating: 'good',
+      element: 'img',
     });
     assert.equal(typeof ratedAt, 'string');
     assert.match(ratedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/, 'ratedAt は ISO 8601');
