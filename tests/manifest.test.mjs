@@ -38,6 +38,25 @@ describe('manifest.json', () => {
     );
   });
 
+  test('options_ui は src/options/options.html を新しいタブで開く', () => {
+    const m = readManifest();
+    assert.deepEqual(m.options_ui, { page: 'src/options/options.html', open_in_tab: true });
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'src', 'options', 'options.html')), 'src/options/options.html がありません');
+  });
+
+  test('optional_host_permissions はちょうど ["<all_urls>"]（既定でオンにする時だけ許可を求める）', () => {
+    const m = readManifest();
+    assert.deepEqual(m.optional_host_permissions, ['<all_urls>']);
+  });
+
+  test('optional_permissions で権限を増やしていない', () => {
+    const m = readManifest();
+    assert.ok(
+      m.optional_permissions === undefined || (Array.isArray(m.optional_permissions) && m.optional_permissions.length === 0),
+      `optional_permissions：${JSON.stringify(m.optional_permissions)}`,
+    );
+  });
+
   test('content_security_policy にリモートの URL が無い', () => {
     const m = readManifest();
     const csp = m.content_security_policy;

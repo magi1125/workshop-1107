@@ -780,7 +780,26 @@
 
   // ---- 評価の保存 ----
 
+  // 使わないサイトに登録されているか（docs/contract.md の「使わないサイト」）
+  const readSettings = async () => {
+    try {
+      const stored = (await chrome.storage.local.get('settings')).settings || {};
+      return {
+        defaultOn: stored.defaultOn === true,
+        excludedSites: Array.isArray(stored.excludedSites) ? stored.excludedSites : [],
+      };
+    } catch {
+      return { defaultOn: false, excludedSites: [] };
+    }
+  };
+
+  const isExcluded = async () => (await readSettings()).excludedSites.includes(location.hostname);
+
   const rate = async (box, value) => {
+    // 使わないサイトに登録されたサイトでは、評価を保存しない
+    if (await isExcluded()) {
+      return;
+    }
     const next = box.rating === value ? null : value;
     const info = describe(box.img);
     const key = storageKey(info);
@@ -838,7 +857,16 @@
 
   const enable = async (shouldAnnounce) => {
     if (state.enabled) {
-      return;
+      return true;
+    }
+    if (await isExcluded()) {
+      if (shouldAnnounce) {
+        announce('このサイトは、評価モードを使わないサイトに登録されています');
+      }
+      return false;
+    }
+    if (state.enabled) {
+      return true;
     }
     state.enabled = true;
     state.observer = new MutationObserver(onMutations);
@@ -866,6 +894,7 @@
     if (shouldAnnounce) {
       announce(`評価モードをオンにしました。画像は${state.boxes.size}枚です`);
     }
+    return true;
   };
 
   const disable = (shouldAnnounce) => {
@@ -921,12 +950,38 @@
       return false;
     }
     if (message.type === 'altEval:setEnabled') {
-      const task = message.enabled ? enable(Boolean(message.announce)) : Promise.resolve(disable(Boolean(message.announce)));
-      task.catch(() => {}).then(() => sendResponse(getState()));
+      state.userToggled = true;
+      if (message.enabled) {
+        enable(Boolean(message.announce))
+          .catch(() => true)
+          .then((ok) => sendResponse(ok === false ? { ...getState(), excluded: true } : getState()));
+      } else {
+        disable(Boolean(message.announce));
+        sendResponse(getState());
+      }
       return true;
     }
     return false;
   });
 
+  // 使わないサイトに登録されたら、評価モードをオフにする
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes.settings || !state.enabled) {
+      return;
+    }
+    const sites = (changes.settings.newValue && changes.settings.newValue.excludedSites) || [];
+    if (sites.includes(location.hostname)) {
+      disable(false);
+    }
+  });
+
   globalThis.__altEvalContent = true;
+
+  // 既定でオンの設定なら、読み込まれた時に読み上げずに評価モードをオンにする。
+  // ポップアップやショートカットで先に切り替えられていたら、その操作を優先する
+  readSettings().then(({ defaultOn }) => {
+    if (defaultOn && !state.userToggled) {
+      enable(false).catch(() => {});
+    }
+  });
 })();

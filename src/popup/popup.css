@@ -63,3 +63,11 @@ button:disabled {
     outline-color: Highlight;
   }
 }
+
+main > button {
+  display: block;
+}
+
+main > button[hidden] {
+  display: none;
+}

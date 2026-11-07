@@ -150,3 +150,142 @@
 - バックグラウンドの service worker は、テスト用に `globalThis.altEval = { getState, setEnabled }` を公開する。テストは service worker の `evaluate` から呼び出す
 - ポップアップは `popup.html?tabId={id}` で開くと、そのタブを対象にする（指定が無い時は、表示中のタブを対象にする）
 - テスト用のページは `tests/fixtures/` に置き、テストの中で起動したHTTPサーバーから配信する
+
+---
+
+# 設定画面と、書き出し・取り込み
+
+企画書の「作るもの」の2.と3.について決めます。
+
+## ファイル
+
+| ファイル | 役割 |
+|---|---|
+| `src/options/options.html`、`options.js`、`options.css` | 設定画面（記録の一覧、評価モードの設定、使わないサイト、書き出し、取り込み） |
+| `src/lib/settings.js` | ESモジュール。設定の読み書きと、既定でオンのための登録・解除。設定画面、ポップアップ、バックグラウンドで共通 |
+| `src/lib/records.js` | ESモジュール。記録の一覧の取得、書き出しのデータの作成、取り込んだデータの検証。設定画面とテストで共通 |
+
+manifest.json には次を加えます。権限（`permissions`）は増やしません。
+
+- `"options_ui": { "page": "src/options/options.html", "open_in_tab": true }`
+- `"optional_host_permissions": ["<all_urls>"]`
+
+## 保存の形式
+
+`chrome.storage.local` に次のキーで保存します。
+
+| キー | 値 |
+|---|---|
+| `r:` で始まるキー | 自分の評価1件（「保存の形式」のとおり） |
+| `i:` で始まるキー | 取り込んだ評価1件。キーは `'i:' + JSON.stringify([evaluator, pageUrl, imageKey, name])`。値は自分の評価と同じ項目に、`evaluator`（評価した人。空文字列も可）と `importedAt`（ISO 8601）を加えたもの |
+| `settings` | `{ defaultOn, excludedSites, exportedSites }` |
+
+`settings` の各項目は次のとおりです。キーが無い時、項目が無い時は、右の値とみなします。
+
+| 項目 | 内容 | 無い時 |
+|---|---|---|
+| `defaultOn` | 評価モードを既定でオンにするか | `false` |
+| `excludedSites` | 評価モードを使わないサイトのホスト名の配列 | `[]` |
+| `exportedSites` | 前回書き出したサイトのホスト名の配列 | `[]` |
+
+「サイト」は、どこでもホスト名（`new URL(url).hostname`）で扱います。
+
+## 使わないサイト
+
+- ポップアップに、表示中のタブのホスト名と、「このサイトでは評価モードを使わない」ボタン（`#exclude`）を表示する。ローカルのファイル（`file:`）では、ホスト名が空になり、登録するとすべてのファイルが対象になってしまうため、`#exclude` を表示しない。登録済みのサイトでは、ボタンの文字を「このサイトで評価モードを使えるようにする」にし、押すと登録を外す
+- 登録すると、表示中のタブの評価モードをオフにする
+- 登録済みのサイトでは、`altEval:setEnabled` で `enabled: true` を送っても評価モードはオンにならない。返す状態は `{ enabled: false, total: 0, rated: 0, excluded: true }`。`announce` が `true` の時は「このサイトは、評価モードを使わないサイトに登録されています」と読み上げる
+- 登録済みのサイトでは、評価を保存しない
+- 設定画面の「使わないサイト」の節に、登録したホスト名の一覧（`ul#excluded-list`）と、ホスト名ごとの「登録を外す」ボタンを表示する。登録が無い時は「登録したサイトはありません」と表示する
+
+## 評価モードを既定でオンにする
+
+- 設定画面に、チェックボックス `#default-on`（ラベル「評価モードを既定でオンにする」）を置く
+- チェックを付けたら、`chrome.permissions.request({ origins: ['<all_urls>'] })` で許可を求める
+  - 許可されたら、`settings.defaultOn` を `true` にし、`chrome.scripting.registerContentScripts` で、id `altEvalAuto`、`matches: ['<all_urls>']`、`js: ['src/content/accessible-name.js', 'src/content/content.js']`、`runAt: 'document_idle'` を登録する
+  - 許可されなかったら、チェックを外し、`#default-on-status` に「すべてのサイトへのアクセスが許可されなかったため、既定でオンにできませんでした」と表示する
+- チェックを外したら、`settings.defaultOn` を `false` にし、登録を外して、`chrome.permissions.remove({ origins: ['<all_urls>'] })` で権限を返す
+- content.js は、読み込まれた時に `settings.defaultOn` が `true` で、使わないサイトに登録されていなければ、読み上げずに評価モードをオンにする
+- バックグラウンドは、起動した時と `chrome.permissions.onRemoved` の時に、権限が無いのに `defaultOn` が `true` なら `false` に戻し、登録を外す
+
+## ポップアップ
+
+- これまでの表示に、表示中のタブのホスト名（`#site`）、`#exclude` ボタン、「記録と設定を開く」ボタン（`#open-options`。`chrome.runtime.openOptionsPage()` を呼ぶ）を加える
+- `chrome://` のページなど、評価モードを使えないページでは、`#exclude` を表示しない
+
+## 設定画面
+
+`<html lang="ja">`。見出しは `h1`「alt通信簿の記録と設定」、各節は `h2` で、次の順に並べる。
+
+1. 記録（`section#records`）
+2. 書き出し（`section#export`）
+3. 取り込み（`section#import`）
+4. 評価モードの設定（`section#settings`。`#default-on` を含む）
+5. 使わないサイト（`section#excluded`）
+
+操作の結果（削除した、書き出した、取り込んだ、など）は `#status`（`role="status"`）に表示する。
+
+### 記録
+
+- 絞り込み：`select#filter-rating`（すべて・良い・悪い。値は `all`・`good`・`poor`）、`select#filter-site`（すべて・ホスト名ごと。値は `all` とホスト名）、`select#filter-source`（すべて・自分・取り込んだ記録。値は `all`・`own`・`imported`）
+- 表：`table#records-table`。`caption` に表示中の件数（「12件の記録」）を入れる。列は、評価、名前、ページ、画像、評価した人、日時、操作の順。見出しのセルは `th scope="col"`
+  - 評価：「○ 良い」「× 悪い」と文字でも表示する
+  - 名前：1行目の文字と同じ表示（`名前：…（altから）` など）
+  - ページ：ページのタイトルと、URL。URLは `http:` か `https:` で始まる時だけリンクにする
+  - 画像：「画像を表示」ボタン。押した時だけ、その行に画像を読み込んで表示する（埋め込みの画像では「埋め込みの画像」と表示し、ボタンは置かない）
+  - 評価した人：自分の記録は「自分」、取り込んだ記録は `evaluator`（空なら「名前なし」）
+  - 操作：「削除」ボタン。アクセシブルネームに、行の名前を含める（例：「削除：会社のロゴ」）
+- 行は日時の新しい順に並べる
+- 記録が無い時は、表の代わりに「記録はまだありません」と表示する
+- ページの文字（タイトル、名前、alt、URL）は、すべて `textContent` で表示する
+
+### 書き出し
+
+- 自分の記録（`r:`）のうち、ページのURLが `http:` か `https:` で始まるものだけを書き出す（ローカルのファイルの場所を外に出さないため）
+- サイトごとのチェックボックスを `fieldset#export-sites` にまとめる（`legend`「書き出すサイト」）。ラベルは「ホスト名（N件）」。`value` はホスト名
+  - `settings.exportedSites` にあるサイトだけ、最初からチェックを付ける
+- チェックボックス `#strip-query`（ラベル「URLの ? 以降と # 以降を削る」）。最初からチェックを付ける
+- テキスト入力 `#evaluator`（ラベル「評価した人の名前（任意）」）
+- `button#export-button`（「書き出す」）。押すと、チェックしたサイトの記録をJSONファイルとしてダウンロードする。ファイル名は `alt-tsushinbo-YYYYMMDD.json`
+  - チェックしたサイトが無い時は、ダウンロードせず、`#status` に「書き出すサイトを選んでください」と表示する
+  - 書き出したら、`settings.exportedSites` を、今回チェックしたサイトの配列にする
+- `#strip-query` にチェックがある時は、`pageUrl`、`imageUrl`、`linkUrl` の `?` 以降と `#` 以降を削る
+
+書き出すファイルの形式：
+
+```json
+{
+  "format": "alt-tsushinbo",
+  "version": 1,
+  "exportedAt": "2026-11-07T09:00:00.000Z",
+  "evaluator": "",
+  "records": [
+    { "pageUrl": "", "pageTitle": "", "imageUrl": null, "embedded": false, "category": "named", "name": "", "nameSource": "alt", "altState": "present", "alt": "", "linkUrl": null, "rating": "good", "ratedAt": "" }
+  ]
+}
+```
+
+`records.js` は、`buildExport(records, { sites, stripQuery, evaluator, now })` で上の形のオブジェクトを返す。`records` は `listRecords(storage)` の結果（記録の値に、`key` と `source`（`'own'` か `'imported'`）を加えたもの）で、`source` が `'own'` の記録だけを書き出す。`now` は `Date`。
+
+### 取り込み
+
+- `input#import-file`（`type="file"`、`accept=".json,application/json"`、ラベル「書き出したファイルを選ぶ」）
+- ファイルを選んだら、検証してから `i:` のキーで保存し、`#status` に「N件を取り込みました。M件は形式が合わないため取り込みませんでした」と表示する
+- ファイル全体の形式が合わない時（JSONでない、`format` が違う、`version` が1でない、`records` が配列でない、5MBを超える）は、何も保存せず「このファイルは取り込めません」と表示する
+
+`records.js` は、`validateImport(data)` で `{ ok, records, rejected, evaluator }` を返す。`ok` はファイル全体の形式が合うか、`records` は取り込める記録の配列（決めた12項目だけを取り出したもの）、`rejected` は取り込まない記録の数、`evaluator` は下の規則で決めた評価した人の名前。1件ごとに次を確かめる。
+
+| 項目 | 条件 |
+|---|---|
+| `pageUrl` | `http:` か `https:` で始まる文字列。2,000文字以下 |
+| `imageUrl`、`linkUrl` | `null`、または `http:` か `https:` で始まる2,000文字以下の文字列 |
+| `pageTitle`、`name` | 文字列。1,000文字以下 |
+| `alt` | `null`、または文字列。5,000文字以下 |
+| `embedded` | 真偽値 |
+| `category` | `named`・`empty`・`none`・`hidden` のどれか |
+| `nameSource` | `aria-labelledby`・`aria-label`・`alt`・`title`・`none` のどれか |
+| `altState` | `present`・`empty`・`missing` のどれか |
+| `rating` | `good`・`poor` のどれか |
+| `ratedAt` | 文字列。50文字以下 |
+
+ファイルの `evaluator` は、文字列で100文字以下の時だけ使う。それ以外は空文字列にする。

@@ -1,0 +1,183 @@
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: #ffffff;
+  color: #1a1a1a;
+  font: 16px/1.6 system-ui, sans-serif;
+}
+
+main {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+h1 {
+  font-size: 1.75rem;
+}
+
+h2 {
+  margin-top: 40px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid #1a1a1a;
+  font-size: 1.375rem;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+select,
+input[type="text"],
+input[type="file"],
+button {
+  box-sizing: border-box;
+  min-height: 44px;
+  border: 2px solid #1a1a1a;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #1a1a1a;
+  font: inherit;
+}
+
+select,
+input[type="text"] {
+  padding: 4px 8px;
+}
+
+input[type="file"] {
+  padding: 6px;
+}
+
+input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+  margin: 0 8px 0 0;
+  vertical-align: middle;
+}
+
+button {
+  padding: 4px 16px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* 評価の列は「○ 良い」を1行で表示する */
+td:first-child {
+  white-space: nowrap;
+}
+
+button:hover {
+  background: #e6e6e6;
+}
+
+:focus-visible {
+  outline: 3px solid #1a1a1a;
+  outline-offset: 2px;
+}
+
+#status:not(:empty) {
+  padding: 8px 12px;
+  border: 2px solid #1a1a1a;
+  border-radius: 4px;
+  background: #f2f2f2;
+}
+
+.help {
+  color: #4a4a4a;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+caption {
+  margin-bottom: 8px;
+  text-align: start;
+  font-weight: 700;
+}
+
+th,
+td {
+  padding: 8px;
+  border: 1px solid #6b6b6b;
+  text-align: start;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+th {
+  background: #f2f2f2;
+}
+
+td img {
+  display: block;
+  max-width: 200px;
+  max-height: 150px;
+  margin-top: 8px;
+  border: 1px solid #6b6b6b;
+}
+
+a {
+  color: #0b4fa3;
+}
+
+fieldset {
+  border: 2px solid #1a1a1a;
+  border-radius: 4px;
+}
+
+fieldset label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-right: 16px;
+}
+
+#excluded-list li {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (forced-colors: active) {
+  select,
+  input,
+  button,
+  th,
+  td,
+  fieldset {
+    border-color: CanvasText;
+  }
+
+  :focus-visible {
+    outline-color: Highlight;
+  }
+}

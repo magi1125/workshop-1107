@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>alt通信簿の記録と設定</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main>
+    <h1>alt通信簿の記録と設定</h1>
+    <p id="status" role="status"></p>
+
+    <section id="records" aria-labelledby="records-heading">
+      <h2 id="records-heading">記録</h2>
+      <div class="filters">
+        <label>評価
+          <select id="filter-rating">
+            <option value="all">すべて</option>
+            <option value="good">○ 良い</option>
+            <option value="poor">× 悪い</option>
+          </select>
+        </label>
+        <label>サイト
+          <select id="filter-site">
+            <option value="all">すべて</option>
+          </select>
+        </label>
+        <label>記録の種類
+          <select id="filter-source">
+            <option value="all">すべて</option>
+            <option value="own">自分</option>
+            <option value="imported">取り込んだ記録</option>
+          </select>
+        </label>
+      </div>
+      <p id="records-empty" hidden>記録はまだありません</p>
+      <div class="table-wrap">
+        <table id="records-table">
+          <caption></caption>
+          <thead>
+            <tr>
+              <th scope="col">評価</th>
+              <th scope="col">名前</th>
+              <th scope="col">ページ</th>
+              <th scope="col">画像</th>
+              <th scope="col">評価した人</th>
+              <th scope="col">日時</th>
+              <th scope="col">操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="export" aria-labelledby="export-heading">
+      <h2 id="export-heading">書き出し</h2>
+      <p>自分の記録を、JSONファイルに書き出します。ページのタイトルや画像の名前にも、外に出したくない情報が含まれることがあります。書き出すサイトを確かめてから書き出してください。</p>
+      <fieldset id="export-sites">
+        <legend>書き出すサイト</legend>
+        <p id="export-sites-empty" hidden>書き出せる記録はまだありません</p>
+      </fieldset>
+      <p>
+        <input id="strip-query" type="checkbox" checked>
+        <label for="strip-query">URLの ? 以降と # 以降を削る</label>
+      </p>
+      <p>
+        <label for="evaluator">評価した人の名前（任意）</label>
+        <input id="evaluator" type="text" maxlength="100" autocomplete="nickname">
+      </p>
+      <button id="export-button" type="button">書き出す</button>
+    </section>
+
+    <section id="import" aria-labelledby="import-heading">
+      <h2 id="import-heading">取り込み</h2>
+      <p>ほかの人が書き出したJSONファイルを取り込みます。取り込んだ記録は、自分の記録と区別して表示します。</p>
+      <p>
+        <label for="import-file">書き出したファイルを選ぶ</label>
+        <input id="import-file" type="file" accept=".json,application/json">
+      </p>
+    </section>
+
+    <section id="settings" aria-labelledby="settings-heading">
+      <h2 id="settings-heading">評価モードの設定</h2>
+      <p>
+        <input id="default-on" type="checkbox" aria-describedby="default-on-help">
+        <label for="default-on">評価モードを既定でオンにする</label>
+      </p>
+      <p id="default-on-help" class="help">オンにすると、すべてのサイトでページを開いた時に評価モードがオンになります。そのため、すべてのサイトのデータを読み取り、変更できる権限を求めます。オフに戻すと、この権限も返します。</p>
+      <p id="default-on-status" role="status"></p>
+    </section>
+
+    <section id="excluded" aria-labelledby="excluded-heading">
+      <h2 id="excluded-heading">使わないサイト</h2>
+      <p>登録したサイトでは、評価モードがオンにならず、評価も保存されません。登録は、ポップアップの「このサイトでは評価モードを使わない」で行います。</p>
+      <ul id="excluded-list"></ul>
+      <p id="excluded-empty" hidden>登録したサイトはありません</p>
+    </section>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

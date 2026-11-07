@@ -55,9 +55,12 @@ export async function waitFor(fn, { timeout = 5000, interval = 50, message = '�
 
 /** tests/fixtures を配信する HTTP サーバーを起動する */
 export async function startServer() {
+  // 受けたリクエストのパス（? 以降を含む）。画像を操作した時だけ読み込むかの確認に使う
+  const requests = [];
   const server = http.createServer((req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
+      requests.push(url.pathname + url.search);
       const pathname = decodeURIComponent(url.pathname);
       if (pathname.startsWith('/img/')) {
         res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
@@ -92,6 +95,7 @@ export async function startServer() {
   const { port } = server.address();
   return {
     server,
+    requests,
     origin: `http://127.0.0.1:${port}`,
     url: (p) => `http://127.0.0.1:${port}/${p.replace(/^\//, '')}`,
     close: () =>
