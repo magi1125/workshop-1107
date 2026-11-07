@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>アクセシブルネームの計算</title>
+</head>
+<body>
+<main>
+<h1>アクセシブルネームの計算</h1>
+
+<!-- aria-labelledby が参照する要素 -->
+<div id="labels">
+  <span id="lb-dog">犬の写真</span>
+  <span id="lb-a">茶色の</span>
+  <span id="lb-b">
+     子犬
+  </span>
+  <span id="lb-with-label" aria-label="参照先のラベル">参照先の本文</span>
+  <span id="lb-space">   </span>
+</div>
+
+<img id="lby-single" src="/img/lby-single.png" aria-labelledby="lb-dog" alt="altは使われない" width="60" height="60">
+<img id="lby-multi" src="/img/lby-multi.png" aria-labelledby="lb-a lb-b" width="60" height="60">
+<img id="lby-label" src="/img/lby-label.png" aria-labelledby="lb-with-label" width="60" height="60">
+<img id="lby-empty" src="/img/lby-empty.png" aria-labelledby="lb-space" aria-label="ラベルへ進む" width="60" height="60">
+<img id="lby-missing" src="/img/lby-missing.png" aria-labelledby="no-such-id" alt="参照先が無い時のalt" width="60" height="60">
+<img id="lby-over-label" src="/img/lby-over-label.png" aria-labelledby="lb-dog" aria-label="使われないラベル" width="60" height="60">
+
+<img id="label" src="/img/label.png" aria-label="  猫の
+  写真  " alt="altは使われない" width="60" height="60">
+<img id="label-space" src="/img/label-space.png" aria-label="   " alt="空白のラベルの次のalt" width="60" height="60">
+<img id="alt" src="/img/alt.png" alt="会社のロゴ" width="60" height="60">
+<img id="alt-ws" src="/img/alt-ws.png" alt="  前後と   途中の空白  " width="60" height="60">
+<img id="alt-empty" src="/img/alt-empty.png" alt="" width="60" height="60">
+<img id="alt-spaces" src="/img/alt-spaces.png" alt="   " width="60" height="60">
+<img id="alt-empty-title" src="/img/alt-empty-title.png" alt="" title="使われないタイトル" width="60" height="60">
+<img id="alt-empty-label" src="/img/alt-empty-label.png" alt="" aria-label="ラベルで名前あり" width="60" height="60">
+<img id="pres-alt" src="/img/pres-alt.png" role="presentation" alt="飾りの線" width="60" height="60">
+<img id="none-noalt" src="/img/none-noalt.png" role="none" width="60" height="60">
+<img id="pres-label" src="/img/pres-label.png" role="presentation" aria-label="ラベルがあれば名前あり" width="60" height="60">
+<img id="title" src="/img/title.png" title="タイトルだけ" width="60" height="60">
+<img id="noattr" src="/img/noattr.png" width="60" height="60">
+
+<div aria-hidden="true">
+  <div>
+    <img id="hidden-alt" src="/img/hidden-alt.png" alt="隠れた画像" width="60" height="60">
+    <img id="hidden-empty" src="/img/hidden-empty.png" alt="" width="60" height="60">
+    <img id="hidden-noalt" src="/img/hidden-noalt.png" width="60" height="60">
+    <img id="hidden-label" src="/img/hidden-label.png" aria-label="隠れたラベル" width="60" height="60">
+  </div>
+</div>
+<img id="self-hidden" src="/img/self-hidden.png" aria-hidden="true" alt="自分で隠れた画像" width="60" height="60">
+<div aria-hidden="false"><img id="hidden-false" src="/img/hidden-false.png" alt="隠れていない画像" width="60" height="60"></div>
+
+<img id="data-src" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" alt="埋め込みの画像" width="60" height="60">
+<img id="blob-src" alt="blobの画像" width="60" height="60">
+
+<a href="https://example.com/next"><span><img id="in-link" src="/img/in-link.png" alt="次のページ" width="60" height="60"></span></a>
+<a><img id="in-a-no-href" src="/img/in-a-no-href.png" alt="hrefの無いa" width="60" height="60"></a>
+</main>
+<script>
+  // blob: の画像を作る
+  const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+  document.getElementById('blob-src').src = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
+</script>
+</body>
+</html>

@@ -16,6 +16,13 @@
 
 ## `globalThis.AltEvalName`
 
+### Chromiumとの既知の違い
+
+自動テストで、Chromiumが計算した名前と比べて見つかった違いです。どちらも名前は空で一致しますが、扱いが違います。
+
+- 空白だけの `alt="   "`：この取り決めでは「空の名前」（読み上げられない）とするが、Chromiumは画像として扱う
+- `alt=""` と `title` の両方がある画像：この取り決めでは「空の名前」とするが、Chromiumは名前が空の画像として扱う
+
 `accessible-name.js` は、ページに読み込むだけで次の2つの関数を定義します。テストは、このファイルを単独でページに読み込んで呼び出せます。
 
 ### `computeName(img)`
@@ -75,7 +82,8 @@
 1. `img` 要素
 2. 親が `picture` 要素なら、`picture` 要素
 3. 祖先に `a[href]`、`button`、`summary`、`label`、`[role="button"]`、`[role="link"]` があれば、いちばん外側のもの
-4. 基準の要素が `aria-hidden="true"` の要素の中にあれば、`aria-hidden="true"` が付いたいちばん外側の要素
+4. 3.の要素が `details` 要素の `summary` なら、`details` 要素。`summary` の直後は `details` の中になり、`details` が閉じている間は評価ボックスが表示されず、Tabキーでも届かないため
+5. 基準の要素が `aria-hidden="true"` の要素の中にあれば、`aria-hidden="true"` が付いたいちばん外側の要素
 
 同じ基準の要素に複数の画像がある場合（リンクの中に画像が2枚ある場合など）は、評価ボックスを画像と同じ順番で並べます。
 
@@ -88,7 +96,11 @@
 
 ### 対象にしない画像
 
+画面にも表示されず、スクリーンリーダーにも伝わらない画像は対象にしません。
+
 - 表示されていない画像（`getClientRects()` の数が0。`display: none` など）
+- `visibility: hidden` か `visibility: collapse` の画像（カルーセルの表示していないスライドなど）
+- `aria-hidden="true"` の要素の中にあり、`overflow` が `hidden` か `clip` の祖先の外に完全に出ている画像（無限に回るカルーセルの複製など）
 - ページのシャドウDOMの中の画像、`iframe` の中の画像
 
 ## 読み上げ用の領域

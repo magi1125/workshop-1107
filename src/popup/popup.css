@@ -1,0 +1,64 @@
+body {
+  min-width: 260px;
+  margin: 0;
+  padding: 16px;
+  background: #ffffff;
+  color: #1a1a1a;
+  font: 16px/1.5 system-ui, sans-serif;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 1.125rem;
+}
+
+p {
+  margin: 0 0 8px;
+}
+
+p:empty {
+  display: none;
+}
+
+button {
+  box-sizing: border-box;
+  min-height: 44px;
+  margin: 0 0 8px;
+  padding: 4px 16px;
+  border: 2px solid #1a1a1a;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #1a1a1a;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #e6e6e6;
+}
+
+button:focus-visible {
+  outline: 3px solid #1a1a1a;
+  outline-offset: 2px;
+}
+
+button:disabled {
+  border-color: #6b6b6b;
+  color: #595959;
+  cursor: default;
+}
+
+#shortcut {
+  color: #4a4a4a;
+  font-size: 0.875rem;
+}
+
+@media (forced-colors: active) {
+  button {
+    border-color: ButtonText;
+  }
+
+  button:focus-visible {
+    outline-color: Highlight;
+  }
+}

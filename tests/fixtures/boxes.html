@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>評価ボックスの挿入</title>
+<style>
+  body { font-family: sans-serif; }
+  img { vertical-align: middle; }
+</style>
+</head>
+<body>
+<header><h1>評価ボックスの挿入</h1></header>
+<main>
+  <p id="p-plain">通常の画像：<img id="plain" src="/img/plain.png" alt="青い空と白い雲" width="100" height="80"> の後ろ</p>
+
+  <picture id="pic">
+    <source srcset="/img/pic.png" type="image/png">
+    <img id="in-picture" src="/img/pic.png" alt="山の写真" width="100" height="80">
+  </picture>
+
+  <p><a id="link-1" href="https://example.com/a"><img id="in-link" src="/img/in-link.png" alt="次のページへ" width="100" height="80"></a></p>
+
+  <p><a id="link-2" href="https://example.com/b"><span><img id="two-1" src="/img/two-1.png" alt="一枚目の画像" width="100" height="80"><img id="two-2" src="/img/two-2.png" alt="" width="100" height="80"></span>リンクの文字</a></p>
+
+  <p><button id="btn" type="button"><img id="in-button" src="/img/in-button.png" alt="検索する" width="100" height="80"></button></p>
+
+  <p><label id="lbl"><img id="in-label" src="/img/in-label.png" alt="同意の画像" width="100" height="80"><input type="checkbox"> 同意する</label></p>
+
+  <p><a id="outer-link" href="https://example.com/c"><span role="button"><img id="nested-control" src="/img/nested-control.png" title="入れ子のコントロール" width="100" height="80"></span></a></p>
+
+  <details id="det"><summary id="sum"><img id="in-summary" src="/img/in-summary.png" alt="詳細を開く" width="100" height="80"></summary><p>詳細の内容</p></details>
+
+  <div id="hidden-outer" aria-hidden="true">
+    <div aria-hidden="true">
+      <img id="in-hidden" src="/img/in-hidden.png" alt="隠れた装飾" width="100" height="80">
+    </div>
+  </div>
+
+  <div id="hidden-link-outer" aria-hidden="true">
+    <a href="https://example.com/d"><picture><img id="hidden-link-picture" src="/img/hidden-link-picture.png" alt="" width="100" height="80"></picture></a>
+  </div>
+
+  <div id="hidden-noalt-outer" aria-hidden="true"><img id="hidden-noalt" src="/img/hidden-noalt.png" width="100" height="80"></div>
+
+  <p><img id="empty"src="/img/empty.png" alt="" width="100" height="80"></p>
+  <p><img id="no-alt" src="/img/no-alt.png" width="100" height="80"></p>
+  <p><img id="presentation" src="/img/presentation.png" role="presentation" width="100" height="80"></p>
+  <p><img id="none-role" src="/img/none-role.png" role="none" alt="飾り" width="100" height="80"></p>
+  <p><img id="labelledby" src="/img/labelledby.png" aria-labelledby="cap" width="100" height="80"> <span id="cap">図1の説明</span></p>
+
+  <!-- 表示されていない画像には評価ボックスを付けない -->
+  <img id="display-none" src="/img/display-none.png" alt="表示されない" width="100" height="80" style="display:none">
+  <div style="display:none"><img id="parent-none" src="/img/parent-none.png" alt="親が表示されない" width="100" height="80"></div>
+
+  <!-- ページのシャドウDOMと iframe の中の画像は対象にしない -->
+  <div id="page-shadow-host"></div>
+  <iframe id="frame" title="埋め込みのページ" srcdoc="<!doctype html><html lang='ja'><body><img id='in-iframe' src='/img/in-iframe.png' alt='iframeの画像' width='50' height='50'></body></html>" width="200" height="100"></iframe>
+</main>
+<script>
+  const root = document.getElementById('page-shadow-host').attachShadow({ mode: 'open' });
+  root.innerHTML = '<img src="/img/in-page-shadow.png" alt="ページのシャドウDOMの画像" width="100" height="80">';
+</script>
+</body>
+</html>

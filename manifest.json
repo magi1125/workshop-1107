@@ -4,7 +4,25 @@
   "description": "__MSG_description__",
   "version": "0.1.0",
   "default_locale": "ja",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "src/background/background.js",
+    "type": "module"
+  },
   "action": {
     "default_popup": "src/popup/popup.html"
+  },
+  "commands": {
+    "toggle-evaluation": {
+      "suggested_key": {
+        "default": "Alt+Shift+E"
+      },
+      "description": "評価モードのオン・オフ"
+    }
   }
 }

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>折りたたんだ評価ボックス</title>
+<style>
+  .clip { width: 240px; height: 120px; overflow: hidden; border: 1px solid #333; }
+  .clip img { display: block; }
+  nav ul { display: flex; gap: 8px; list-style: none; padding: 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>折りたたんだ評価ボックス</h1>
+  <nav aria-label="アイコンのメニュー">
+    <ul>
+      <li><a id="icon-link" href="https://example.com/home"><img id="small" src="/img/small.png" alt="ホーム" width="24" height="24"></a></li>
+      <li><img id="narrow" src="/img/narrow.png" alt="細い画像" width="40" height="200"></li>
+    </ul>
+  </nav>
+  <div class="clip" id="clip">
+    <img id="clipped" src="/img/clipped.png" alt="枠いっぱいの画像" width="240" height="120">
+  </div>
+  <p><img id="big" src="/img/big.png" alt="大きい画像" width="200" height="150"></p>
+</main>
+</body>
+</html>

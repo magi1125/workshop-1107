@@ -2,26 +2,18 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>仮の名前</title>
-  <style>
-    body {
-      min-width: 200px;
-      margin: 0;
-      padding: 16px;
-      font-family: system-ui, sans-serif;
-      font-size: 16px;
-      color: #1a1a1a;
-      background: #ffffff;
-    }
-    p {
-      margin: 0;
-    }
-  </style>
+  <title>alt通信簿</title>
+  <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <main>
+    <h1>alt通信簿</h1>
+    <p id="mode">評価モード：確認しています</p>
+    <p id="counts"></p>
+    <button id="toggle" type="button" disabled>評価モードをオンにする</button>
     <p id="status" role="status"></p>
+    <p id="shortcut"></p>
   </main>
-  <script src="popup.js"></script>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>
