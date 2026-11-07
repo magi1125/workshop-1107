@@ -350,10 +350,33 @@ export async function boxState(page, imgId) {
   }, imgId);
 }
 
+/**
+ * 印（data-mode="badge"）の評価ボックスなら、印にマウスを重ねて開き、開くまで待つ。
+ * それ以外の評価ボックスでは何もしない
+ */
+export async function openIfBadge(page, box) {
+  if ((await box.getAttribute('data-mode')) !== 'badge') return;
+  const expanded = () => box.evaluate((b) => !!b.shadowRoot?.querySelector('.wrapper')?.classList.contains('expanded'));
+  if (await expanded()) return;
+  const r = await box.evaluate((b) => {
+    const badge = b.shadowRoot?.querySelector('div.badge');
+    const rect = (badge || b).getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  await page.mouse.move(r.x, r.y);
+  await waitFor(expanded, { timeout: 3000, message: '印にマウスを重ねても評価ボックスが開きません（wrapper に expanded が付きません）' });
+}
+
+/** 評価ボックス（Locator）の評価ボタンを押す。印なら、先に開く */
+export async function clickRatingInBox(page, box, rating) {
+  await openIfBadge(page, box);
+  await box.locator(`button[data-rating="${rating}"]`).click();
+}
+
 /** 評価ボタンを押す */
 export async function clickRating(page, imgId, rating) {
   const box = await boxLocator(page, imgId);
-  await box.locator(`button[data-rating="${rating}"]`).click();
+  await clickRatingInBox(page, box, rating);
 }
 
 /** すべての評価ボックスの数を待つ */

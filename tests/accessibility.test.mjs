@@ -3,7 +3,7 @@
 // (d) forced-colors、(e) コントラスト比
 import { describe, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launchExtension, boxLocator, waitForBoxCount, waitFor, AXE_PATH } from './helpers/extension.mjs';
+import { launchExtension, boxLocator, waitForBoxCount, waitFor, openIfBadge, AXE_PATH } from './helpers/extension.mjs';
 
 // ---- アクセシビリティツリー ----
 
@@ -152,7 +152,7 @@ describe('評価ボックスのアクセシビリティ', { timeout: 240000 }, (
   });
 
   describe('axe-core', () => {
-    for (const fixture of ['boxes.html', 'simple.html', 'compact.html']) {
+    for (const fixture of ['boxes.html', 'simple.html', 'compact.html', 'badge.html']) {
       test(`${fixture}：評価ボックスを入れても、axe-core の違反が増えない`, async (t) => {
         const page = await h.openFixture(fixture);
         try {
@@ -177,7 +177,32 @@ describe('評価ボックスのアクセシビリティ', { timeout: 240000 }, (
       });
     }
 
-    test('compact.html：1行目を表示した状態（マウスとフォーカス）でも、axe-core の違反が増えない', async () => {
+    test('badge.html：印を1つ開いた状態でも、axe-core の違反が増えない', async () => {
+      const page = await h.openFixture('badge.html');
+      try {
+        const baseline = await runAxe(page);
+        await h.enable(page);
+        await waitForBoxCount(page, 20);
+        // 開く前に、すべての印が閉じていることを確かめる
+        const closed = await page.evaluate(() =>
+          window.__t.boxes().filter((b) => b.getAttribute('data-mode') === 'badge').every((b) => window.__t.badgeInfo(b).expanded === false),
+        );
+        assert.equal(closed, true, '最初から開いている印があります（または wrapper がありません）');
+        const box = await boxLocator(page, 'iso-img');
+        await openIfBadge(page, box);
+        await page.waitForTimeout(300);
+        const added = newViolations(baseline, await runAxe(page));
+        assert.deepEqual(
+          added.map((v) => `${v.id} ${v.target}`),
+          [],
+          `拡張機能による axe-core の違反：\n${added.map((v) => `${v.id} ${v.target}\n  ${v.summary}`).join('\n')}`,
+        );
+      } finally {
+        await page.close();
+      }
+    });
+
+    test('compact.html：1行目を表示した状態（印をフォーカスで開き、小さい表示にマウスを重ねる）でも、axe-core の違反が増えない', async () => {
       const page = await h.openFixture('compact.html');
       try {
         const baseline = await runAxe(page);
@@ -200,7 +225,7 @@ describe('評価ボックスのアクセシビリティ', { timeout: 240000 }, (
     });
   });
 
-  describe('小さい表示のアクセシビリティツリー', () => {
+  describe('印と小さい表示のアクセシビリティツリー', () => {
     let page;
     let ax;
     let modes;
@@ -214,8 +239,8 @@ describe('評価ボックスのアクセシビリティ', { timeout: 240000 }, (
     });
     after(async () => page?.close());
 
-    test('前提：大きい画像の1つを除いて、小さい表示になっている', () => {
-      assert.deepEqual(modes.filter((m) => m === 'compact').length, 7, `data-mode：${JSON.stringify(modes)}`);
+    test('前提：小さい画像4つは印（badge）、切り取られる画像3つは小さい表示（compact）、大きい画像は通常表示', () => {
+      assert.deepEqual(modes, ['badge', 'badge', 'badge', 'badge', 'compact', 'compact', 'compact', 'inline'], `data-mode：${JSON.stringify(modes)}`);
     });
 
     test('グループと「良い」「悪い」の2つのボタンが、評価ボックスの数だけツリーにある', () => {
@@ -228,14 +253,14 @@ describe('評価ボックスのアクセシビリティ', { timeout: 240000 }, (
       assert.equal(ax.filter((n) => n.role === 'button' && /^評価/.test(n.name)).length, 0, '「評価」ボタンがあります');
     });
 
-    test('1行目を視覚的に隠していても、空の名前・名前なしの画像の1行目は読み上げられる', () => {
+    test('印を閉じていて1行目を視覚的に隠していても、空の名前・名前なしの画像の1行目は読み上げられる', () => {
       const spoken = spokenText(ax).replace(/\n/g, '');
       for (const text of ['読み上げられない画像（空のalt）', '名前なし（ファイル名が読み上げられる場合があります）']) {
         assert.ok(spoken.includes(text), `読み上げられません：${text}`);
       }
     });
 
-    test('名前ありの画像の1行目（名前：…）は、小さい表示でも読み上げられない', () => {
+    test('名前ありの画像の1行目（名前：…）は、印と小さい表示でも読み上げられない', () => {
       const spoken = spokenText(ax);
       assert.ok(!spoken.includes('名前：'), '名前ありの1行目が読み上げられます');
     });

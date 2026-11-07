@@ -257,8 +257,76 @@
   return { ratio: (l1 + 0.05) / (l2 + 0.05), fg: fgPx.slice(0, 3), bg: bgPx.slice(0, 3) };
 }
 
+  function plainRect(r) {
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+  }
+
+  /**
+   * 契約「小さい画像の印（バッジ）」の状態をまとめる。
+   * 契約の `wrapper` は、シャドウルートの中の class="wrapper" の要素とみなす
+   */
+  function badgeInfo(box) {
+    const root = box && box.shadowRoot;
+    if (!root) return null;
+    const wrapper = root.querySelector('.wrapper');
+    const badge = root.querySelector('div.badge');
+    const line = root.querySelector('p.line');
+    const group = root.querySelector('[role="group"]');
+    const buttons = Array.from(root.querySelectorAll('button[data-rating]')).map((b) => ({
+      rating: b.getAttribute('data-rating'),
+      shown: visuallyShown(b),
+      display: getComputedStyle(b).display,
+      rect: plainRect(b.getBoundingClientRect()),
+    }));
+    return {
+      mode: box.getAttribute('data-mode'),
+      popover: box.getAttribute('popover'),
+      popoverOpen: box.matches(':popover-open'),
+      hasWrapper: !!wrapper,
+      expanded: wrapper ? wrapper.classList.contains('expanded') : null,
+      hasBadge: !!badge,
+      badgeAriaHidden: badge ? badge.getAttribute('aria-hidden') : null,
+      badgeShown: badge ? visuallyShown(badge) : false,
+      badgeText: badge ? norm(badge.textContent) : null,
+      badgeRect: badge ? plainRect(badge.getBoundingClientRect()) : null,
+      lineShown: line ? visuallyShown(line) : false,
+      lineDisplay: line ? getComputedStyle(line).display : null,
+      groupShown: group ? visuallyShown(group) : false,
+      groupDisplay: group ? getComputedStyle(group).display : null,
+      buttons,
+      hostRect: plainRect(box.getBoundingClientRect()),
+    };
+  }
+
+  /** シャドウルートの中で見えている要素の矩形をすべて含む矩形（ホスト要素を含む） */
+  function shownExtent(box) {
+    const rects = [box.getBoundingClientRect()];
+    for (const el of box.shadowRoot.querySelectorAll('*')) {
+      if (visuallyShown(el)) rects.push(el.getBoundingClientRect());
+    }
+    const valid = rects.filter((r) => r.width > 0 && r.height > 0);
+    return {
+      left: Math.min(...valid.map((r) => r.left)),
+      top: Math.min(...valid.map((r) => r.top)),
+      right: Math.max(...valid.map((r) => r.right)),
+      bottom: Math.max(...valid.map((r) => r.bottom)),
+    };
+  }
+
+  /** 画面の点にある要素が、評価ボックス（シャドウルートの中を含む）の一部か */
+  function boxAtPoint(box, x, y) {
+    let el = document.elementFromPoint(x, y);
+    while (el && el.shadowRoot) {
+      const inner = el.shadowRoot.elementFromPoint(x, y);
+      if (!inner || inner === el) break;
+      el = inner;
+    }
+    for (let e = el; e; e = parentOf(e)) if (e === box) return true;
+    return false;
+  }
+
   window.__t = {
     boxes, anchorFor, boxFor, targetImages, elementKind, state, deepActive, describeActive, cleanHTML, liveText, norm, contrast,
-    visuallyShown, textShown, textNodes, visibleRectOf,
+    visuallyShown, textShown, textNodes, visibleRectOf, badgeInfo, shownExtent, boxAtPoint,
   };
 })();

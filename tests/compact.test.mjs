@@ -1,19 +1,24 @@
-// 小さい画像と、切り取られる評価ボックスの「小さい表示」（data-mode="compact"）のテスト
+// 切り取られる評価ボックスの「小さい表示」（data-mode="compact"）のテスト。
+// 契約「小さい画像の印（バッジ）」により、幅か高さが48px未満の画像は compact ではなく badge になる。
+// 印そのものの動作は badge.test.mjs で確かめる
 import { describe, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { launchExtension, boxLocator, boxState, waitForBoxCount, waitFor, sleep } from './helpers/extension.mjs';
 
-// 小さい表示になる画像と、その理由
-const COMPACT = [
+// 印（data-mode="badge"）になる小さい画像と、その理由
+const BADGE = [
   ['small', '幅と高さが48px未満（リンクの中）'],
   ['small-empty', '幅と高さが48px未満（空のalt）'],
   ['small-noalt', '幅と高さが48px未満（alt属性なし）'],
   ['narrow', '幅だけが48px未満'],
+];
+// 小さい表示になる画像と、その理由
+const COMPACT = [
   ['clipped', 'overflow:hidden の固定の大きさの祖先に切り取られる'],
   ['card-img', '画像が overflow:hidden のカードより大きく、カードに切り取られる'],
   ['card2-img', '画像がカードの右下にずれていて、上だけ切り取られる'],
 ];
-const BOX_COUNT = COMPACT.length + 1; // + 大きい画像（#big）
+const BOX_COUNT = BADGE.length + COMPACT.length + 1; // + 大きい画像（#big）
 
 // 位置の許容誤差（px）
 const TOLERANCE = 2;
@@ -73,6 +78,16 @@ describe('小さい表示の評価ボックス', { timeout: 240000 }, () => {
   }
 
   describe('小さい表示にする条件', () => {
+    for (const [id, why] of BADGE) {
+      test(`#${id}（${why}）は compact ではなく data-mode="badge" で、popover="manual" で最前面に表示される`, async () => {
+        const m = await modeOf(id);
+        assert.ok(m, `#${id} の評価ボックスがありません`);
+        assert.equal(m.mode, 'badge', 'data-mode');
+        assert.equal(m.popover, 'manual', 'popover 属性');
+        assert.equal(m.open, true, ':popover-open');
+      });
+    }
+
     for (const [id, why] of COMPACT) {
       test(`#${id}（${why}）は data-mode="compact" で、popover="manual" で最前面に表示される`, async () => {
         const m = await modeOf(id);
@@ -120,14 +135,6 @@ describe('小さい表示の評価ボックス', { timeout: 240000 }, () => {
       assert.ok(Math.abs(p.box.left - ex.left) <= TOLERANCE, `#${id}：左の位置が、見えている部分の左端 +4px ではありません${detail}`);
       assert.ok(Math.abs(p.box.top - ex.top) <= TOLERANCE, `#${id}：上の位置が、見えている部分の上端 +4px ではありません${detail}`);
     }
-
-    test('小さいアイコン（#small）：画像の左上から右と下に4pxずらした位置に置く', async () => {
-      assertPlaced(await positionOf('small'), 'small');
-    });
-
-    test('細い画像（#narrow）：画像の左上から右と下に4pxずらした位置に置く', async () => {
-      assertPlaced(await positionOf('narrow'), 'narrow');
-    });
 
     test('カードより大きい画像（#card-img）：画像ではなく、カードで切り取られた見えている部分の左上 +4px に置く', async () => {
       const p = await positionOf('card-img');
@@ -186,7 +193,7 @@ describe('小さい表示の評価ボックス', { timeout: 240000 }, () => {
 
     test('ボタンには記号「○」「×」が見え、記号は aria-hidden="true"。文字「良い」「悪い」は視覚的に隠れている', async () => {
       const r = await page.evaluate(() => {
-        const box = window.__t.boxFor(document.getElementById('small'));
+        const box = window.__t.boxFor(document.getElementById('clipped'));
         const out = {};
         for (const [rating, symbol, text] of [
           ['good', '○', '良い'],
@@ -274,38 +281,41 @@ describe('小さい表示の評価ボックス', { timeout: 240000 }, () => {
 
     test('評価ボックスの中にフォーカスがある間は1行目が表示され、外れると隠れる', async () => {
       await reset();
-      await page.locator('#icon-link').focus();
+      // #clipped の評価ボックスの直前のフォーカスの位置（#narrow の評価ボックスの「悪い」）から Tab キーで入る
+      const prev = await boxLocator(page, 'narrow');
+      await prev.locator('button[data-rating="poor"]').focus();
       await page.keyboard.press('Tab');
       const a = await page.evaluate(() => window.__t.describeActive());
-      assert.equal(a?.rating, 'good', `Tab キーで評価ボタンに移れません：${JSON.stringify(a)}`);
-      await waitLine('small', true, 'フォーカスがあっても1行目が表示されません');
+      const idx = await page.evaluate(() => window.__t.boxes().indexOf(window.__t.boxFor(document.getElementById('clipped'))));
+      assert.deepEqual(a && { boxIndex: a.boxIndex, rating: a.rating }, { boxIndex: idx, rating: 'good' }, `Tab キーで評価ボタンに移れません：${JSON.stringify(a)}`);
+      await waitLine('clipped', true, 'フォーカスがあっても1行目が表示されません');
       // 評価ボックスの中でフォーカスを移しても、表示したまま
       await page.keyboard.press('Tab');
       assert.equal(await page.evaluate(() => window.__t.describeActive()?.rating), 'poor');
-      assert.equal((await lineOf('small')).shown, true, '評価ボックスの中でフォーカスを移すと1行目が隠れました');
+      assert.equal((await lineOf('clipped')).shown, true, '評価ボックスの中でフォーカスを移すと1行目が隠れました');
       // 評価ボックスの外へ
       await page.keyboard.press('Tab');
       const out = await page.evaluate(() => window.__t.describeActive());
-      assert.notEqual(out?.boxIndex, await page.evaluate(() => window.__t.boxes().indexOf(window.__t.boxFor(document.getElementById('small')))));
-      await waitLine('small', false, 'フォーカスが外れても1行目が隠れません');
+      assert.notEqual(out?.boxIndex, idx);
+      await waitLine('clipped', false, 'フォーカスが外れても1行目が隠れません');
     });
 
     test('フォーカスで表示している間に Esc キーを押すと隠れ、フォーカスが外れるまで隠れたまま', async () => {
       await reset();
-      const box = await boxLocator(page, 'small');
+      const box = await boxLocator(page, 'clipped');
       await box.locator('button[data-rating="good"]').focus();
-      await waitLine('small', true, 'フォーカスがあっても1行目が表示されません');
+      await waitLine('clipped', true, 'フォーカスがあっても1行目が表示されません');
       await page.keyboard.press('Escape');
-      await waitLine('small', false, 'Esc キーで1行目が隠れません');
+      await waitLine('clipped', false, 'Esc キーで1行目が隠れません');
       // フォーカスが評価ボックスの中にある間は、隠れたまま（中でボタンを移っても）
       await box.locator('button[data-rating="poor"]').focus();
       await sleep(300);
-      assert.equal((await lineOf('small')).shown, false, 'フォーカスが評価ボックスの中にあるのに、Esc キーの後で1行目がまた表示されました');
+      assert.equal((await lineOf('clipped')).shown, false, 'フォーカスが評価ボックスの中にあるのに、Esc キーの後で1行目がまた表示されました');
       // フォーカスが外れてから戻ると、また表示される
       await page.locator('#after').focus();
-      await waitLine('small', false, 'フォーカスが外れても1行目が隠れません');
+      await waitLine('clipped', false, 'フォーカスが外れても1行目が隠れません');
       await box.locator('button[data-rating="good"]').focus();
-      await waitLine('small', true, 'フォーカスが外れて戻った後に、1行目が表示されません');
+      await waitLine('clipped', true, 'フォーカスが外れて戻った後に、1行目が表示されません');
       await reset();
     });
 
@@ -331,11 +341,11 @@ describe('小さい表示の評価ボックス', { timeout: 240000 }, () => {
 
     test('マウスとフォーカスで表示した1行目の文字と背景のコントラスト比が 4.5 以上', async () => {
       await reset();
-      const box = await boxLocator(page, 'small-noalt');
+      const box = await boxLocator(page, 'card2-img');
       await box.locator('button[data-rating="good"]').focus();
-      await waitLine('small-noalt', true, 'フォーカスがあっても1行目が表示されません');
+      await waitLine('card2-img', true, 'フォーカスがあっても1行目が表示されません');
       const c = await page.evaluate(() => {
-        const root = window.__t.boxFor(document.getElementById('small-noalt')).shadowRoot;
+        const root = window.__t.boxFor(document.getElementById('card2-img')).shadowRoot;
         return window.__t.contrast(root.querySelector('p.line'));
       });
       assert.ok(c.ratio >= 4.5, `1行目：${c.ratio.toFixed(2)}（文字 ${c.fg}、背景 ${c.bg}）`);
@@ -344,7 +354,7 @@ describe('小さい表示の評価ボックス', { timeout: 240000 }, () => {
   });
 
   describe('キーボード', () => {
-    test('Tab キーの順番：リンクの次に、その画像の評価ボックスの「良い」ボタンへ移る', async () => {
+    test('Tab キーの順番：リンクの次に、その画像の評価ボックス（印）の「良い」ボタンへ移る', async () => {
       await reset();
       await page.locator('#icon-link').focus();
       await page.keyboard.press('Tab');

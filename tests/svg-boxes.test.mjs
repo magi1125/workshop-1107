@@ -1,7 +1,8 @@
-// 契約「svg要素、role="img"の要素、input type="image"」：評価ボックスの挿入・1行目・小さい表示・キーボード・変化への追従・保存のキーのテスト
+// 契約「svg要素、role="img"の要素、input type="image"」：評価ボックスの挿入・1行目・印（小さい画像）・キーボード・変化への追従・保存のキーのテスト
+// 契約「小さい画像の印（バッジ）」により、幅か高さが48px未満の要素は data-mode="badge" になる
 import { describe, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launchExtension, waitForBoxCount, waitFor } from './helpers/extension.mjs';
+import { launchExtension, waitForBoxCount, waitFor, clickRatingInBox } from './helpers/extension.mjs';
 
 const HIDDEN = 'スクリーンリーダーに伝わらない画像（aria-hidden）。';
 const NONE_SVG = '名前なし（「画像」とだけ読み上げられるか、読み飛ばされる場合があります）';
@@ -10,8 +11,8 @@ const NONE_IMG = '名前なし（ファイル名が読み上げられる場合�
 // [対象の要素のセレクター, 基準の要素のセレクター, element, category, 1行目, data-mode]
 const EXPECTED = [
   ['#svg-big', '#svg-big', 'svg', 'named', '名前：大きい図（title要素から）', 'inline'],
-  ['#svg-in-btn', '#svg-btn', 'svg', 'hidden', `${HIDDEN}名前なし`, 'compact'],
-  ['#svg-in-link', '#svg-link', 'svg', 'named', '名前：ホーム（aria-labelから）', 'compact'],
+  ['#svg-in-btn', '#svg-btn', 'svg', 'hidden', `${HIDDEN}名前なし`, 'badge'],
+  ['#svg-in-link', '#svg-link', 'svg', 'named', '名前：ホーム（aria-labelから）', 'badge'],
   ['#ri-stars', '#ri-stars', 'role-img', 'named', '名前：評価：星4つ（aria-labelから）', 'inline'],
   ['#ri-none', '#ri-none', 'role-img', 'none', NONE_SVG, 'inline'],
   ['#ri-hidden', '#ri-hidden-outer', 'role-img', 'hidden', `${HIDDEN}名前：飾りの星`, 'inline'],
@@ -23,7 +24,7 @@ const EXPECTED = [
   ['#same-2 > svg', '#same-2 > svg', 'svg', 'none', NONE_SVG, 'inline'],
   ['#long-1 > svg', '#long-1 > svg', 'svg', 'none', NONE_SVG, 'inline'],
   ['#long-2 > svg', '#long-2 > svg', 'svg', 'none', NONE_SVG, 'inline'],
-  ['#svg-small', '#svg-small', 'svg', 'named', '名前：小さいアイコン（title要素から）', 'compact'],
+  ['#svg-small', '#svg-small', 'svg', 'named', '名前：小さいアイコン（title要素から）', 'badge'],
   ['#ii-alt', '#ii-alt', 'input-image', 'named', '名前：検索（altから）', 'inline'],
   // input type="image" は、名前が無いと「送信」などの決まった名前で読み上げられる（取り決めの「1行目の文字」）
   ['#ii-none', '#ii-none', 'input-image', 'none', '名前なし（「送信」などの決まった名前で読み上げられる場合があります）', 'inline'],
@@ -105,7 +106,8 @@ describe('svg要素・role="img"・input type="image" の評価ボックス', { 
   async function click(sel, rating) {
     const s = await stateOf(sel);
     if (!s) throw new Error(`${sel} の評価ボックスが見つかりません`);
-    await page.locator('alt-eval-box[data-alt-eval="box"]').nth(s.index).locator(`button[data-rating="${rating}"]`).click();
+    // 印（data-mode="badge"）の評価ボックスは、マウスを重ねて開いてから押す
+    await clickRatingInBox(page, page.locator('alt-eval-box[data-alt-eval="box"]').nth(s.index), rating);
   }
 
   async function waitRecord(key, pred = (v) => v !== undefined, message) {
@@ -153,7 +155,7 @@ describe('svg要素・role="img"・input type="image" の評価ボックス', { 
       assert.equal(s.lineAriaHidden, category === 'named' ? 'true' : null, 'p.line の aria-hidden は named の時だけ "true"');
       assert.equal(s.groupLabel, '直前の画像の評価');
       assert.equal(s.mode, mode, 'data-mode');
-      if (mode === 'compact') assert.equal(s.popoverOpen, true, '小さい表示は popover で最前面に表示する');
+      if (mode === 'compact' || mode === 'badge') assert.equal(s.popoverOpen, true, '小さい表示と印は popover で最前面に表示する');
     });
   }
 

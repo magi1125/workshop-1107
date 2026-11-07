@@ -93,6 +93,46 @@
       max-width: 20em;
       margin: 6px 4px 4px;
     }
+    /* 小さい画像の印（バッジ）。閉じている間は印だけを見せ、ボタンと1行目は読み上げとTabキーの対象に残す */
+    .badge {
+      display: none;
+    }
+    .badge-mode .badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      width: 20px;
+      height: 20px;
+      border: 2px solid #1a1a1a;
+      border-radius: 50%;
+      box-shadow: 0 0 0 2px #ffffff;
+      background: #ffffff;
+      color: #1a1a1a;
+      font: 700 13px/1 system-ui, sans-serif;
+    }
+    /* 評価済みの印は、黒い背景に白い記号にして、未評価の白い丸と見分けられるようにする */
+    .badge-mode .badge.rated {
+      background: #1a1a1a;
+      color: #ffffff;
+    }
+    .badge-mode.expanded .badge {
+      display: none;
+    }
+    .badge-mode:not(.expanded) .box {
+      padding: 0;
+      border: 0;
+      box-shadow: none;
+      background: transparent;
+    }
+    .badge-mode:not(.expanded) .panel {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
     button {
       box-sizing: border-box;
       min-width: 44px;
@@ -136,7 +176,8 @@
     }
     @media (forced-colors: active) {
       .box,
-      button {
+      button,
+      .badge-mode .badge {
         border-color: CanvasText;
       }
       button[aria-pressed="true"] {
@@ -163,6 +204,7 @@
     liveRemoveTimer: 0,
     repositionScheduled: false,
     recheckRoots: new Set(),
+    touchOpenBoxes: new Set(),
     recheckTimer: 0,
     near: new Set(), // 画面の近くにある、小さい表示の画像
     intersection: null,
@@ -332,26 +374,109 @@
     for (const button of box.ratingButtons) {
       button.setAttribute('aria-pressed', String(button.dataset.rating === rating));
     }
+    if (box.badgeEl) {
+      // 印にも評価の結果を出し、どのアイコンを評価し終えたかを一目でわかるようにする
+      box.badgeEl.textContent = rating ? RATINGS.find((r) => r.value === rating).symbol : '';
+      box.badgeEl.classList.toggle('rated', Boolean(rating));
+    }
   };
 
   // 小さい表示では、マウスを重ねるかフォーカスがある間だけ、1行目を画面に表示する
+  // 印（バッジ）では、1行目と一緒にボタンも表示する（開く）
   const setLineShown = (box, shown) => {
-    box.wrapper.classList.toggle('show-line', shown && !box.lineDismissed);
+    const show = shown && !box.lineDismissed;
+    const wasShown = box.wrapper.classList.contains('show-line');
+    box.wrapper.classList.toggle('show-line', show);
+    if (box.badge) {
+      box.wrapper.classList.toggle('expanded', show);
+      // 開いた時は、隣の印より手前に表示し直す。フォーカスがある時は、表示し直した後にフォーカスを戻す
+      if (show && !wasShown) {
+        const focused = box.host.shadowRoot.activeElement;
+        box.reordering = true;
+        try {
+          box.host.hidePopover();
+          box.host.showPopover();
+        } catch {
+          // popover に対応していない場合は、そのままにする
+        }
+        if (focused) {
+          focused.focus({ preventScroll: true });
+        }
+        box.reordering = false;
+      }
+      if (show !== wasShown) {
+        // 開くと幅が変わるため、画面の右端からはみ出さないよう、この印の左右の位置だけを決め直す
+        adjustExpanded(box);
+      }
+    }
   };
 
   const watchLine = (box) => {
     const { wrapper, host } = box;
     const update = () => {
-      const active = wrapper.matches(':hover') || Boolean(host.shadowRoot.activeElement);
+      // フォーカスで開くのは、キーボードで移動した時（:focus-visible）だけにする。
+      // マウスで押した後にフォーカスが残っても、マウスを離せば閉じるようにするため
+      const focused = host.shadowRoot.activeElement;
+      // タッチの後もブラウザは :hover のままにすることがあるため、タッチで開いた後はマウスで操作するまで :hover を見ない
+      const hovered = !box.ignoreHover && wrapper.matches(':hover');
+      // 印（バッジ）だけは、キーボードで移動したフォーカスの時だけ開く。小さい表示は、これまでどおりフォーカスがあれば表示する
+      const focusOpens = Boolean(focused) && (!box.badge || focused.matches(':focus-visible'));
+      const active = hovered || focusOpens || Boolean(box.touchOpen);
       if (!active) {
         box.lineDismissed = false;
       }
       setLineShown(box, active);
     };
-    wrapper.addEventListener('pointerenter', update);
-    wrapper.addEventListener('pointerleave', update);
+    box.updateLine = update;
+    const onPointer = (event) => {
+      if (event.pointerType === 'mouse') {
+        box.ignoreHover = false;
+      }
+      update();
+    };
+    wrapper.addEventListener('pointerenter', onPointer);
+    wrapper.addEventListener('pointerleave', onPointer);
     wrapper.addEventListener('focusin', update);
-    wrapper.addEventListener('focusout', () => setTimeout(update, 0));
+    wrapper.addEventListener('focusout', () => {
+      if (!box.reordering) {
+        setTimeout(update, 0);
+      }
+    });
+    // タッチ操作では、印をタッチすると開き、評価ボックスの外をタッチすると閉じる
+    wrapper.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'touch' && box.badge && !wrapper.classList.contains('expanded')) {
+        event.preventDefault();
+        box.touchOpen = true;
+        box.ignoreHover = true;
+        box.lineDismissed = false;
+        // 開いた直後に、同じタッチのクリックが、開いた位置に現れたボタンに当たって評価されないようにする
+        box.suppressPointerId = event.pointerId;
+        // 同じタッチのクリックが届いたら、目印を消す。クリックがボタン以外に当たって届かない場合に備え、1秒後にも消す
+        const clear = () => {
+          if (box.suppressPointerId === event.pointerId) {
+            box.suppressPointerId = undefined;
+          }
+        };
+        addEventListener('click', clear, { once: true });
+        setTimeout(clear, 1000);
+        state.touchOpenBoxes.add(box);
+        update();
+      }
+    });
+  };
+
+  const onOutsidePointer = (event) => {
+    if (state.touchOpenBoxes.size === 0) {
+      return;
+    }
+    const path = event.composedPath();
+    for (const box of [...state.touchOpenBoxes]) {
+      if (!path.includes(box.host)) {
+        box.touchOpen = false;
+        state.touchOpenBoxes.delete(box);
+        box.updateLine();
+      }
+    }
   };
 
   // 1行目を表示している間は、フォーカスがどこにあってもEscキーで隠せるようにする（WCAG 1.4.13）
@@ -430,8 +555,10 @@
       text.textContent = label;
       button.append(mark, text);
       button.addEventListener('click', (event) => {
-        // ページのスクリプトが作ったクリックでは評価しない
-        if (event.isTrusted) {
+        // ページのスクリプトが作ったクリックと、印をタッチして開いた時と同じタッチのクリックでは評価しない
+        const sameTouch = box.suppressPointerId !== undefined && event.pointerId === box.suppressPointerId;
+        box.suppressPointerId = undefined;
+        if (event.isTrusted && !sameTouch) {
           rate(box, value);
         }
       });
@@ -448,7 +575,21 @@
     return box;
   };
 
-  // 小さい画像と、切り取られる評価ボックスは、小さい表示にして最前面で画像に重ねる
+  // 小さい画像は、ふだんは小さな印（バッジ）にし、マウスを重ねるかフォーカスした時に開く
+  const makeBadge = (box) => {
+    box.badge = true;
+    const badge = document.createElement('div');
+    badge.className = 'badge';
+    badge.setAttribute('aria-hidden', 'true');
+    box.badgeEl = badge;
+    box.boxEl.prepend(badge);
+    box.wrapper.classList.add('badge-mode');
+    makeCompact(box);
+    box.host.dataset.mode = 'badge';
+    applyRating(box, box.rating);
+  };
+
+  // 切り取られる評価ボックスと、覆われる評価ボックスは、小さい表示にして最前面で画像に重ねる
   const makeCompact = (box) => {
     const { host } = box;
     host.dataset.mode = 'compact';
@@ -490,17 +631,66 @@
       right = Math.min(right, outer.right);
     }
     // 完全に切り取られている場合は、画像の矩形を使う
-    return bottom > top && right > left ? { top, left } : { top: rect.top, left: rect.left };
+    return bottom > top && right > left
+      ? { top, left, bottom, right }
+      : { top: rect.top, left: rect.left, bottom: rect.bottom, right: rect.right };
   };
+
+  const BADGE_SIZE = 20;
+
+  // 印を開いた・閉じた時は、その印の左右の位置だけを決め直す（ほかの印は動かさない）
+  const adjustExpanded = (box) => {
+    if (!box.badgePos) {
+      positionCompact([box]);
+      return;
+    }
+    const viewportWidth = document.documentElement.clientWidth;
+    const expanded = box.wrapper.classList.contains('expanded');
+    const left = expanded ? Math.min(box.badgePos.left, viewportWidth - box.host.offsetWidth - 4) : box.badgePos.left;
+    box.host.style.setProperty('left', `${Math.round(Math.max(0, left))}px`, 'important');
+  };
+  const inDocumentOrder = (a, b) => (a.host.compareDocumentPosition(b.host) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+
+  // 印の位置。右上・右下・左下・左上の順に試し、先に置いた印と重ならない最初の角に置く
+  const badgeCorners = (v) => [
+    [v.right - 12, v.top - 8],
+    [v.right - 12, v.bottom - 12],
+    [v.left - 8, v.bottom - 12],
+    [v.left - 8, v.top - 8],
+  ];
+
+  const overlapsAny = ([x, y], placed) =>
+    placed.some(([px, py]) => x < px + BADGE_SIZE && px < x + BADGE_SIZE && y < py + BADGE_SIZE && py < y + BADGE_SIZE);
 
   // 位置は、すべての大きさを先に測ってから、まとめて書き込む（レイアウトの再計算を減らすため）
   const positionCompact = (boxes) => {
     const viewportWidth = document.documentElement.clientWidth;
-    const placements = boxes.map((box) => {
+    const placements = boxes.filter((box) => !box.badge).map((box) => {
       const visible = visibleRect(box.img);
       const maxLeft = Math.max(0, viewportWidth - box.host.offsetWidth - 4);
       return { box, top: Math.round(visible.top + 4), left: Math.round(Math.min(Math.max(0, visible.left + 4), maxLeft)) };
     });
+    // 印は重なりを避けるため、画面の近くにある印をまとめて、DOMの順に置き直す
+    if (boxes.some((box) => box.badge)) {
+      const badges = [...new Set([...nearCompactBoxes().filter((box) => box.badge), ...boxes.filter((box) => box.badge)])]
+        .sort(inDocumentOrder);
+      const placed = [];
+      for (const box of badges) {
+        // 画面の左端と上端からはみ出さないよう先に寄せてから、重なりを判定する
+        const corners = badgeCorners(visibleRect(box.img)).map(([x, y]) => [Math.max(0, x), Math.max(0, y)]);
+        // スクロールで角が入れ替わらないよう、前に置いた角が空いていれば、その角を使い続ける
+        const order = box.corner !== undefined ? [box.corner, 0, 1, 2, 3] : [0, 1, 2, 3];
+        const index = order.find((i) => !overlapsAny(corners[i], placed));
+        box.corner = index === undefined ? 0 : index;
+        const [x, y] = corners[box.corner];
+        placed.push([x, y]);
+        box.badgePos = { left: Math.round(x), top: Math.round(y) };
+        // 開いている時は、画面の右端からはみ出さないよう左にずらす
+        const expanded = box.wrapper.classList.contains('expanded');
+        const left = expanded ? Math.min(x, viewportWidth - box.host.offsetWidth - 4) : x;
+        placements.push({ box, top: Math.round(y), left: Math.round(Math.max(0, left)) });
+      }
+    }
     for (const { box, top, left } of placements) {
       box.host.style.setProperty('top', `${top}px`, 'important');
       box.host.style.setProperty('left', `${left}px`, 'important');
@@ -713,10 +903,21 @@
     }
     const targets = rebuild.filter(isTarget);
     const added = targets.map(insertBox);
-    const toCompact = added.filter((box) => isSmall(box.img) || isClipped(box.host) || isObscured(box.host));
-    for (const box of toCompact) {
-      makeCompact(box);
-    }
+    // 先にすべて測ってから書き換える。小さい画像は印、切り取られる・覆われる評価ボックスは小さい表示にする
+    const modes = added.map((box) => {
+      if (isSmall(box.img)) {
+        return 'badge';
+      }
+      return isClipped(box.host) || isObscured(box.host) ? 'compact' : 'inline';
+    });
+    const toCompact = added.filter((box, i) => modes[i] !== 'inline');
+    added.forEach((box, i) => {
+      if (modes[i] === 'badge') {
+        makeBadge(box);
+      } else if (modes[i] === 'compact') {
+        makeCompact(box);
+      }
+    });
     positionCompact(toCompact);
     if (added.length > 0) {
       // 挿入した評価ボックスで後ろの内容がずれるため、ほかの小さい表示の位置も決め直す
@@ -956,6 +1157,7 @@
     state.lastUrl = pageUrl();
     addEventListener('popstate', onUrlChange);
     addEventListener('keydown', onEscape, true);
+    addEventListener('pointerdown', onOutsidePointer, true);
     if (globalThis.navigation) {
       navigation.addEventListener('navigatesuccess', onUrlChange);
     }
@@ -989,6 +1191,7 @@
     state.resize = null;
     removeEventListener('popstate', onUrlChange);
     removeEventListener('keydown', onEscape, true);
+    removeEventListener('pointerdown', onOutsidePointer, true);
     if (globalThis.navigation) {
       navigation.removeEventListener('navigatesuccess', onUrlChange);
     }
