@@ -1,0 +1,14 @@
+{
+  "name": "alt-eval-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome拡張機能（Manifest V3）の開発用。拡張機能そのものはnpmのパッケージを使わない",
+  "scripts": {
+    "test": "node --test tests/",
+    "check": "node scripts/check-forbidden.mjs"
+  },
+  "devDependencies": {
+    "axe-core": "4.14.0",
+    "playwright": "1.63.0"
+  }
+}
