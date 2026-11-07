@@ -12,13 +12,15 @@
   const LIVE_TAG = 'alt-eval-live';
   const SMALL_SIZE = 48;
   const RATINGS = [
-    { value: 'good', label: '良い' },
-    { value: 'fair', label: '普通' },
-    { value: 'poor', label: '悪い' },
+    { value: 'good', label: '良い', symbol: '○' },
+    { value: 'poor', label: '悪い', symbol: '×' },
   ];
-  const RATING_LABEL = Object.fromEntries(RATINGS.map((r) => [r.value, r.label]));
   const INTERACTIVE = 'a[href], button, summary, label, [role="button"], [role="link"]';
   const WATCHED_ATTRIBUTES = ['alt', 'aria-label', 'aria-labelledby', 'title', 'role', 'src', 'srcset'];
+  // 表示の切り替え（タブ、アコーディオン、details など）で変わる属性
+  const DISPLAY_ATTRIBUTES = ['class', 'style', 'hidden', 'open', 'aria-hidden', 'inert'];
+  const RECHECK_DELAY = 200;
+  const NEAR_MARGIN = '300px';
   // ページのイベント処理が評価ボックスの操作に反応しないよう、ここで伝わるのを止める
   const STOPPED_EVENTS = [
     'click', 'dblclick', 'auxclick', 'mousedown', 'mouseup', 'pointerdown', 'pointerup',
@@ -39,8 +41,8 @@
       text-align: start;
       white-space: normal;
     }
-    .collapsed .box {
-      padding: 6px;
+    .compact .box {
+      padding: 2px;
     }
     .line {
       margin: 0 0 8px;
@@ -51,11 +53,30 @@
       flex-wrap: wrap;
       gap: 8px;
     }
-    .panel[hidden] {
-      display: none;
+    .compact .buttons {
+      gap: 2px;
     }
-    .collapsed .panel {
-      margin-top: 8px;
+    /* 画面からは隠し、読み上げには残す。ボタンの文字（良い・悪い）は、画面では記号（○・×）だけを見せる */
+    .label,
+    .compact:not(.show-line) .line {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    /* マウスを重ねた時にボタンの位置がずれないよう、1行目はボタンの下に表示する（読み上げの順番は変えない） */
+    .compact .panel {
+      display: flex;
+      flex-direction: column;
+    }
+    .compact .line {
+      order: 1;
+    }
+    .compact.show-line .line {
+      max-width: 20em;
+      margin: 6px 4px 4px;
     }
     button {
       box-sizing: border-box;
@@ -70,10 +91,12 @@
       font: inherit;
       cursor: pointer;
     }
-    button.toggle {
-      min-width: 24px;
-      min-height: 24px;
-      padding: 0 8px;
+    .compact button {
+      min-width: 28px;
+      min-height: 28px;
+      padding: 0;
+      font-size: 18px;
+      line-height: 1;
     }
     button:hover {
       background: #e6e6e6;
@@ -92,6 +115,9 @@
     .mark {
       display: inline-block;
       min-width: 1em;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1;
     }
     @media (forced-colors: active) {
       .box,
@@ -121,6 +147,12 @@
     live: null,
     liveRemoveTimer: 0,
     repositionScheduled: false,
+    recheckRoots: new Set(),
+    recheckTimer: 0,
+    near: new Set(), // 画面の近くにある、小さい表示の画像
+    intersection: null,
+    resize: null,
+    lastUrl: '',
   };
 
   const pageUrl = () => location.href.split('#')[0];
@@ -128,13 +160,15 @@
   const storageKey = (info) => 'r:' + JSON.stringify([pageUrl(), info.embedded ? 'embedded' : info.imageUrl, info.name]);
 
   // ページのCSSの影響を受けないよう、ホスト要素の表示に関わる値を直接指定する
-  const setHostStyle = (host, collapsed) => {
+  const setHostStyle = (host, compact) => {
     const style = host.style;
     style.cssText = '';
     style.setProperty('all', 'initial', 'important');
     style.setProperty('display', 'block', 'important');
     style.setProperty('box-sizing', 'border-box', 'important');
-    if (collapsed) {
+    // 画像を含む要素が visibility: hidden になったら、評価ボックスも隠す
+    style.setProperty('visibility', 'inherit', 'important');
+    if (compact) {
       style.setProperty('position', 'fixed', 'important');
       style.setProperty('inset', 'auto', 'important');
       style.setProperty('margin', '0', 'important');
@@ -143,8 +177,11 @@
       style.setProperty('background', 'transparent', 'important');
       style.setProperty('overflow', 'visible', 'important');
       style.setProperty('width', 'max-content', 'important');
-      style.setProperty('max-width', 'min(40em, calc(100vw - 16px))', 'important');
+      style.setProperty('max-width', 'min(22em, calc(100vw - 16px))', 'important');
     } else {
+      // カード全体を覆う透明なリンクなど、ページの要素の下に隠れてクリックが貫通しないよう、手前に表示する
+      style.setProperty('position', 'relative', 'important');
+      style.setProperty('z-index', '2147483647', 'important');
       style.setProperty('width', 'fit-content', 'important');
       style.setProperty('margin', '4px 0', 'important');
       style.setProperty('max-width', '100%', 'important');
@@ -219,6 +256,7 @@
     const root = host.attachShadow({ mode: 'open' });
     const region = document.createElement('div');
     region.setAttribute('role', 'status');
+    region.lang = 'ja';
     root.append(region);
     (document.body || document.documentElement).append(host);
     state.live = { host, region };
@@ -236,24 +274,46 @@
 
   // ---- 評価ボックス ----
 
+  // 押した評価は、ボタンの押した状態（aria-pressed）と、色を反転した見た目で示す
   const applyRating = (box, rating) => {
     box.rating = rating;
     for (const button of box.ratingButtons) {
-      const pressed = button.dataset.rating === rating;
-      button.setAttribute('aria-pressed', String(pressed));
-      button.querySelector('.mark').textContent = pressed ? '✓' : '';
-    }
-    if (box.toggle) {
-      box.toggle.textContent = rating ? `評価：${RATING_LABEL[rating]}` : '評価';
+      button.setAttribute('aria-pressed', String(button.dataset.rating === rating));
     }
   };
 
-  const setExpanded = (box, expanded) => {
-    if (!box.toggle) {
+  // 小さい表示では、マウスを重ねるかフォーカスがある間だけ、1行目を画面に表示する
+  const setLineShown = (box, shown) => {
+    box.wrapper.classList.toggle('show-line', shown && !box.lineDismissed);
+  };
+
+  const watchLine = (box) => {
+    const { wrapper, host } = box;
+    const update = () => {
+      const active = wrapper.matches(':hover') || Boolean(host.shadowRoot.activeElement);
+      if (!active) {
+        box.lineDismissed = false;
+      }
+      setLineShown(box, active);
+    };
+    wrapper.addEventListener('pointerenter', update);
+    wrapper.addEventListener('pointerleave', update);
+    wrapper.addEventListener('focusin', update);
+    wrapper.addEventListener('focusout', () => setTimeout(update, 0));
+  };
+
+  // 1行目を表示している間は、フォーカスがどこにあってもEscキーで隠せるようにする（WCAG 1.4.13）
+  const onEscape = (event) => {
+    if (event.key !== 'Escape') {
       return;
     }
-    box.toggle.setAttribute('aria-expanded', String(expanded));
-    box.panel.hidden = !expanded;
+    for (const box of state.boxes.values()) {
+      if (box.compact && box.wrapper.classList.contains('show-line')) {
+        event.preventDefault();
+        box.lineDismissed = true;
+        setLineShown(box, false);
+      }
+    }
   };
 
   const buildBox = (img) => {
@@ -282,6 +342,8 @@
     style.textContent = STYLE;
     const wrapper = document.createElement('div');
     wrapper.className = 'wrapper';
+    // ページの言語によらず、評価ボックスの文字を日本語として読み上げる
+    wrapper.lang = 'ja';
     const boxEl = document.createElement('div');
     boxEl.className = 'box';
     const panel = document.createElement('div');
@@ -300,9 +362,9 @@
     group.setAttribute('role', 'group');
     group.setAttribute('aria-label', '直前の画像の評価');
 
-    const box = { img, host, info, key: storageKey(info), rating: null, toggle: null, panel, ratingButtons: [] };
+    const box = { img, host, info, key: storageKey(info), rating: null, compact: false, lineDismissed: false, ratingButtons: [] };
 
-    for (const { value, label } of RATINGS) {
+    for (const { value, label, symbol } of RATINGS) {
       const button = document.createElement('button');
       button.type = 'button';
       button.dataset.rating = value;
@@ -310,19 +372,20 @@
       const mark = document.createElement('span');
       mark.className = 'mark';
       mark.setAttribute('aria-hidden', 'true');
-      button.append(mark, label);
-      button.addEventListener('click', () => rate(box, value));
+      mark.textContent = symbol;
+      const text = document.createElement('span');
+      text.className = 'label';
+      text.textContent = label;
+      button.append(mark, text);
+      button.addEventListener('click', (event) => {
+        // ページのスクリプトが作ったクリックでは評価しない
+        if (event.isTrusted) {
+          rate(box, value);
+        }
+      });
       box.ratingButtons.push(button);
       group.append(button);
     }
-
-    group.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && box.toggle && box.toggle.getAttribute('aria-expanded') === 'true') {
-        event.preventDefault();
-        setExpanded(box, false);
-        box.toggle.focus();
-      }
-    });
 
     panel.append(line, group);
     boxEl.append(panel);
@@ -333,23 +396,25 @@
     return box;
   };
 
-  // 小さい画像と、切り取られる評価ボックスは、折りたたんで最前面に表示する
-  const collapse = (box) => {
-    const { host, boxEl, panel } = box;
-    host.dataset.mode = 'collapsed';
-    box.wrapper.classList.add('collapsed');
-    setHostStyle(host, true);
-    const toggle = document.createElement('button');
-    toggle.type = 'button';
-    toggle.className = 'toggle';
-    toggle.setAttribute('aria-expanded', 'false');
-    toggle.addEventListener('click', () => {
-      setExpanded(box, toggle.getAttribute('aria-expanded') !== 'true');
+  // 小さい画像と、切り取られる評価ボックスは、小さい表示にして最前面で画像に重ねる
+  const makeCompact = (box) => {
+    const { host } = box;
+    host.dataset.mode = 'compact';
+    box.compact = true;
+    // 画面の外にある画像の評価ボックスにフォーカスが移ったら、画像が見える位置までスクロールする
+    host.addEventListener('focusin', () => {
+      const rect = box.img.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > innerHeight) {
+        scrollBy({ top: rect.top - innerHeight / 3 });
+      }
+      positionCompact([box]);
     });
-    boxEl.prepend(toggle);
-    box.toggle = toggle;
-    panel.hidden = true;
-    applyRating(box, box.rating);
+    if (state.intersection) {
+      state.intersection.observe(box.img);
+    }
+    box.wrapper.classList.add('compact');
+    setHostStyle(host, true);
+    watchLine(box);
     host.setAttribute('popover', 'manual');
     try {
       host.showPopover();
@@ -358,13 +423,31 @@
     }
   };
 
+  // 画像の実際に見えている部分（overflow が hidden か clip の祖先で切り取られた後の矩形）
+  const visibleRect = (img) => {
+    const rect = img.getBoundingClientRect();
+    let { top, left, bottom, right } = rect;
+    for (let node = img.parentElement; node && node !== document.documentElement; node = node.parentElement) {
+      if (!clipsOverflow(getComputedStyle(node))) {
+        continue;
+      }
+      const outer = node.getBoundingClientRect();
+      top = Math.max(top, outer.top);
+      left = Math.max(left, outer.left);
+      bottom = Math.min(bottom, outer.bottom);
+      right = Math.min(right, outer.right);
+    }
+    // 完全に切り取られている場合は、画像の矩形を使う
+    return bottom > top && right > left ? { top, left } : { top: rect.top, left: rect.left };
+  };
+
   // 位置は、すべての大きさを先に測ってから、まとめて書き込む（レイアウトの再計算を減らすため）
-  const positionCollapsed = (boxes) => {
+  const positionCompact = (boxes) => {
     const viewportWidth = document.documentElement.clientWidth;
     const placements = boxes.map((box) => {
-      const rect = box.img.getBoundingClientRect();
-      const maxLeft = Math.max(0, viewportWidth - box.host.offsetWidth - 8);
-      return { box, top: Math.round(rect.bottom + 2), left: Math.round(Math.min(Math.max(0, rect.left), maxLeft)) };
+      const visible = visibleRect(box.img);
+      const maxLeft = Math.max(0, viewportWidth - box.host.offsetWidth - 4);
+      return { box, top: Math.round(visible.top + 4), left: Math.round(Math.min(Math.max(0, visible.left + 4), maxLeft)) };
     });
     for (const { box, top, left } of placements) {
       box.host.style.setProperty('top', `${top}px`, 'important');
@@ -372,7 +455,32 @@
     }
   };
 
-  const collapsedBoxes = () => [...state.boxes.values()].filter((box) => box.toggle);
+  // 位置を更新するのは、画面の近くにある小さい表示だけにする（画像が多いページで遅くならないように）
+  const nearCompactBoxes = () => [...state.near].map((img) => state.boxes.get(img)).filter((box) => box && box.compact);
+
+  // 画面から離れた小さい表示は、画面の外に置く（古い位置のまま画面に残らないように）
+  const parkOffscreen = (box) => {
+    box.host.style.setProperty('top', '-10000px', 'important');
+  };
+
+  const onIntersection = (entries) => {
+    const entered = [];
+    for (const entry of entries) {
+      const box = state.boxes.get(entry.target);
+      if (entry.isIntersecting) {
+        state.near.add(entry.target);
+        if (box && box.compact) {
+          entered.push(box);
+        }
+      } else {
+        state.near.delete(entry.target);
+        if (box && box.compact && !box.host.shadowRoot.activeElement) {
+          parkOffscreen(box);
+        }
+      }
+    }
+    positionCompact(entered);
+  };
 
   const repositionAll = () => {
     if (state.repositionScheduled) {
@@ -381,7 +489,7 @@
     state.repositionScheduled = true;
     requestAnimationFrame(() => {
       state.repositionScheduled = false;
-      positionCollapsed(collapsedBoxes());
+      positionCompact(nearCompactBoxes());
     });
   };
 
@@ -412,6 +520,24 @@
       }
     }
     return false;
+  };
+
+  // 画面に見えている評価ボックスが、ページの要素に覆われているか。
+  // 覆われていると、ボタンを押したつもりでページのリンクや広告をクリックしてしまう
+  const isObscured = (host) => {
+    const rect = host.getBoundingClientRect();
+    const points = [
+      [rect.left + rect.width / 2, rect.top + rect.height / 2],
+      [rect.left + 4, rect.top + 4],
+      [rect.right - 4, rect.bottom - 4],
+    ];
+    return points.some(([x, y]) => {
+      if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) {
+        return false;
+      }
+      const hit = document.elementFromPoint(x, y);
+      return hit !== null && hit !== host;
+    });
   };
 
   const isOurs = (node) => node.localName === BOX_TAG || node.localName === LIVE_TAG;
@@ -482,6 +608,10 @@
     if (!box) {
       return;
     }
+    if (box.compact && state.intersection) {
+      state.intersection.unobserve(img);
+      state.near.delete(img);
+    }
     box.host.remove();
     state.boxes.delete(img);
   };
@@ -501,7 +631,9 @@
       return;
     }
     for (const box of boxes) {
-      applyRating(box, stored[box.key] ? stored[box.key].rating : null);
+      const rating = stored[box.key] && stored[box.key].rating;
+      // 以前の版の「普通」など、今の選択肢に無い評価は表示しない
+      applyRating(box, RATINGS.some((r) => r.value === rating) ? rating : null);
     }
   };
 
@@ -529,12 +661,68 @@
     }
     const targets = rebuild.filter(isTarget);
     const added = targets.map(insertBox);
-    const toCollapse = added.filter((box) => isSmall(box.img) || isClipped(box.host));
-    for (const box of toCollapse) {
-      collapse(box);
+    const toCompact = added.filter((box) => isSmall(box.img) || isClipped(box.host) || isObscured(box.host));
+    for (const box of toCompact) {
+      makeCompact(box);
     }
-    positionCollapsed(toCollapse);
+    positionCompact(toCompact);
+    if (added.length > 0) {
+      // 挿入した評価ボックスで後ろの内容がずれるため、ほかの小さい表示の位置も決め直す
+      repositionAll();
+    }
     await restoreRatings(added);
+  };
+
+  // 表示の切り替えがあった範囲の画像を調べ直す。
+  // 新しく見えるようになった画像には評価ボックスを付け、見えなくなった画像からは外す
+  const recheck = () => {
+    state.recheckTimer = 0;
+    if (!state.enabled) {
+      state.recheckRoots.clear();
+      return;
+    }
+    const imgs = new Set();
+    for (const root of state.recheckRoots) {
+      if (!root.isConnected) {
+        continue;
+      }
+      if (root.localName === 'img') {
+        imgs.add(root);
+      }
+      for (const img of root.querySelectorAll('img')) {
+        imgs.add(img);
+      }
+    }
+    state.recheckRoots.clear();
+    const changed = [];
+    for (const img of imgs) {
+      const box = state.boxes.get(img);
+      const target = isTarget(img);
+      const hiddenNow = Boolean(outermostHidden(img));
+      if (box ? !target || hiddenNow !== (box.info.category === 'hidden') : target) {
+        changed.push(img);
+      }
+    }
+    if (changed.length > 0) {
+      schedule(changed);
+    }
+    repositionAll();
+  };
+
+  const scheduleRecheck = (root) => {
+    state.recheckRoots.add(root);
+    if (!state.recheckTimer) {
+      state.recheckTimer = setTimeout(recheck, RECHECK_DELAY);
+    }
+  };
+
+  // ページを移動せずにURLが変わった時（SPA）は、保存した評価を新しいURLで読み直す
+  const onUrlChange = () => {
+    if (!state.enabled || pageUrl() === state.lastUrl) {
+      return;
+    }
+    state.lastUrl = pageUrl();
+    restoreRatings([...state.boxes.values()]);
   };
 
   const schedule = (imgs) => {
@@ -552,8 +740,14 @@
     let removed = false;
     for (const mutation of mutations) {
       if (mutation.type === 'attributes') {
-        if (mutation.target.localName === 'img') {
-          imgs.push(mutation.target);
+        const { target } = mutation;
+        if (isOurs(target)) {
+          continue;
+        }
+        if (target.localName === 'img' && WATCHED_ATTRIBUTES.includes(mutation.attributeName)) {
+          imgs.push(target);
+        } else {
+          scheduleRecheck(target);
         }
         continue;
       }
@@ -609,8 +803,13 @@
           },
         });
       } else {
-        // 評価した後で名前やURLが変わっていても、元の記録を消す
-        await chrome.storage.local.remove([...new Set([key, box.key])]);
+        // 評価した後で名前が変わっていても、同じページの元の記録を消す。
+        // 別のページ（SPAでURLが変わる前）の記録は消さない
+        const keys = [key];
+        if (box.key !== key && JSON.parse(box.key.slice(2))[0] === pageUrl()) {
+          keys.push(box.key);
+        }
+        await chrome.storage.local.remove(keys);
       }
     } catch {
       announce('評価を保存できませんでした');
@@ -647,8 +846,17 @@
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: WATCHED_ATTRIBUTES,
+      attributeFilter: [...WATCHED_ATTRIBUTES, ...DISPLAY_ATTRIBUTES],
     });
+    state.intersection = new IntersectionObserver(onIntersection, { rootMargin: NEAR_MARGIN });
+    state.resize = new ResizeObserver(repositionAll);
+    state.resize.observe(document.documentElement);
+    state.lastUrl = pageUrl();
+    addEventListener('popstate', onUrlChange);
+    addEventListener('keydown', onEscape, true);
+    if (globalThis.navigation) {
+      navigation.addEventListener('navigatesuccess', onUrlChange);
+    }
     addEventListener('scroll', repositionAll, { capture: true, passive: true });
     addEventListener('resize', repositionAll, { passive: true });
     for (const img of document.querySelectorAll('img')) {
@@ -668,6 +876,19 @@
     state.observer.disconnect();
     state.observer = null;
     state.pending.clear();
+    clearTimeout(state.recheckTimer);
+    state.recheckTimer = 0;
+    state.recheckRoots.clear();
+    state.intersection.disconnect();
+    state.intersection = null;
+    state.near.clear();
+    state.resize.disconnect();
+    state.resize = null;
+    removeEventListener('popstate', onUrlChange);
+    removeEventListener('keydown', onEscape, true);
+    if (globalThis.navigation) {
+      navigation.removeEventListener('navigatesuccess', onUrlChange);
+    }
     removeEventListener('scroll', repositionAll, { capture: true });
     removeEventListener('resize', repositionAll);
     for (const img of [...state.boxes.keys()]) {

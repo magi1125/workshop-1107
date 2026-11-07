@@ -57,11 +57,10 @@
     const line = root && root.querySelector('p.line');
     const group = root && root.querySelector('[role="group"]');
     const pressed = {};
-    for (const r of ['good', 'fair', 'poor']) {
+    for (const r of ['good', 'poor']) {
       const b = root && root.querySelector(`button[data-rating="${r}"]`);
       pressed[r] = b ? b.getAttribute('aria-pressed') : null;
     }
-    const toggle = root && root.querySelector('button.toggle');
     return {
       hasShadow: !!root,
       category: box.getAttribute('data-category'),
@@ -70,9 +69,90 @@
       lineAriaHidden: line ? line.getAttribute('aria-hidden') : null,
       groupLabel: group ? group.getAttribute('aria-label') : null,
       pressed,
-      toggleText: toggle ? norm(toggle.textContent) : null,
-      toggleExpanded: toggle ? toggle.getAttribute('aria-expanded') : null,
     };
+  }
+
+  /** 親をたどる（シャドウルートの中からホスト要素へも出る） */
+  function parentOf(e) {
+    if (e.parentElement) return e.parentElement;
+    if (e.parentNode instanceof ShadowRoot) return e.parentNode.host;
+    return null;
+  }
+
+  function intersect(a, b) {
+    const left = Math.max(a.left, b.left);
+    const top = Math.max(a.top, b.top);
+    const right = Math.min(a.right, b.right);
+    const bottom = Math.min(a.bottom, b.bottom);
+    return { left, top, right, bottom, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+  }
+
+  /** 要素のパディングの矩形（overflow で切り取る範囲） */
+  function paddingRect(el) {
+    const r = el.getBoundingClientRect();
+    const left = r.left + el.clientLeft;
+    const top = r.top + el.clientTop;
+    return { left, top, right: left + el.clientWidth, bottom: top + el.clientHeight };
+  }
+
+  /**
+   * 矩形が画面の上で実際に見えるか。祖先（シャドウルートの外まで）の overflow・clip・clip-path と、
+   * 画面の範囲で切り取った後に、幅と高さが 2px 以上残るかを調べる
+   */
+  function rectShown(rect, fromEl) {
+    if (rect.width < 2 || rect.height < 2) return false;
+    let r = { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+    r = intersect(r, { left: 0, top: 0, right: innerWidth, bottom: innerHeight });
+    if (r.width < 2 || r.height < 2) return false;
+    for (let e = fromEl; e; e = parentOf(e)) {
+      const cs = getComputedStyle(e);
+      if (cs.display === 'none') return false;
+      if (cs.clipPath && cs.clipPath !== 'none') return false;
+      if (cs.clip && cs.clip !== 'auto' && (cs.position === 'absolute' || cs.position === 'fixed')) return false;
+      if (e !== fromEl && /hidden|clip|scroll|auto/.test(cs.overflowX + ' ' + cs.overflowY)) {
+        r = intersect(r, paddingRect(e));
+        if (r.width < 2 || r.height < 2) return false;
+      }
+      // popover（最前面）のホスト要素より外の祖先には切り取られない
+      if (e.localName === 'alt-eval-box' && e.matches(':popover-open')) break;
+    }
+    return true;
+  }
+
+  /** 要素が視覚的に見えているか（display・visibility・opacity・大きさ・切り取り） */
+  function visuallyShown(el) {
+    if (!el || !el.isConnected) return false;
+    if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true })) return false;
+    return rectShown(el.getBoundingClientRect(), el);
+  }
+
+  /** 文字のノードが視覚的に見えているか */
+  function textShown(node) {
+    const el = node.parentElement;
+    if (!el || !el.checkVisibility({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true })) return false;
+    if (parseFloat(getComputedStyle(el).fontSize) < 4) return false;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    return rectShown(range.getBoundingClientRect(), el);
+  }
+
+  /** 要素の中で、文字（空白を除く）が text に一致するテキストノード */
+  function textNodes(root, text) {
+    const out = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) if (norm(n.data) === text) out.push(n);
+    return out;
+  }
+
+  /** 画像の実際に見えている部分：画像の矩形と、overflow が hidden か clip の祖先の矩形の重なり */
+  function visibleRectOf(img) {
+    let r = img.getBoundingClientRect();
+    r = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    for (let e = img.parentElement; e; e = e.parentElement) {
+      const cs = getComputedStyle(e);
+      if (/hidden|clip/.test(cs.overflowX + ' ' + cs.overflowY)) r = intersect(r, paddingRect(e));
+    }
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
   }
 
   /** シャドウルートの中まで辿った、フォーカスのある要素 */
@@ -92,7 +172,6 @@
         kind: 'box',
         boxIndex: boxes().indexOf(root.host),
         rating: el.getAttribute('data-rating'),
-        toggle: el.classList.contains('toggle'),
       };
     }
     return { kind: 'page', id: el.id || null, tag: el.localName };
@@ -147,5 +226,8 @@
   return { ratio: (l1 + 0.05) / (l2 + 0.05), fg: fgPx.slice(0, 3), bg: bgPx.slice(0, 3) };
 }
 
-  window.__t = { boxes, anchorFor, boxFor, targetImages, state, deepActive, describeActive, cleanHTML, liveText, norm, contrast };
+  window.__t = {
+    boxes, anchorFor, boxFor, targetImages, state, deepActive, describeActive, cleanHTML, liveText, norm, contrast,
+    visuallyShown, textShown, textNodes, visibleRectOf,
+  };
 })();

@@ -22,6 +22,7 @@ function render(state) {
   countsEl.textContent = state.enabled ? `画像 ${state.total}枚、評価済み ${state.rated}枚` : '';
   toggleEl.textContent = state.enabled ? '評価モードをオフにする' : '評価モードをオンにする';
   toggleEl.disabled = false;
+  toggleEl.removeAttribute('aria-disabled');
 }
 
 async function showShortcut() {
@@ -42,11 +43,12 @@ async function main() {
   render(await getState(tabId));
 
   toggleEl.addEventListener('click', async () => {
-    if (toggleEl.disabled) {
+    if (toggleEl.getAttribute('aria-disabled') === 'true') {
       return;
     }
-    // 2回続けて押された時に、切り替えが2回走らないよう、先に押せなくする
-    toggleEl.disabled = true;
+    // 2回続けて押された時に、切り替えが2回走らないよう、先に押せなくする。
+    // disabled にするとフォーカスが外れてしまうため、aria-disabled を使う
+    toggleEl.setAttribute('aria-disabled', 'true');
     const current = await getState(tabId);
     try {
       // ポップアップを操作している時は、ポップアップの中で切り替えを伝える
@@ -56,7 +58,7 @@ async function main() {
         ? `評価モードをオンにしました。画像は${next.total}枚です`
         : '評価モードをオフにしました';
     } catch {
-      toggleEl.disabled = false;
+      toggleEl.removeAttribute('aria-disabled');
       statusEl.textContent = 'このページでは評価モードを使えません';
     }
   });

@@ -48,14 +48,14 @@ describe('キーボードの操作', { timeout: 120000 }, () => {
     assert.deepEqual(seq, ['page:a1', 'box:0', 'box:1', 'page:b-mid', 'page:a3', 'box:2', 'page:foot']);
   });
 
-  test('評価ボックスの中では、良い・普通・悪いの順に Tab キーで移動できる', async () => {
+  test('評価ボックスの中では、良い・悪いの順に Tab キーで移動できる', async () => {
     await page.locator('#a1').focus();
     const ratings = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
       await page.keyboard.press('Tab');
       ratings.push(await page.evaluate(() => window.__t.describeActive()?.rating ?? null));
     }
-    assert.deepEqual(ratings, ['good', 'fair', 'poor']);
+    assert.deepEqual(ratings, ['good', 'poor']);
   });
 
   test('Shift+Tab で逆の順番に移動できる', async () => {
@@ -80,7 +80,7 @@ describe('キーボードの操作', { timeout: 120000 }, () => {
     await box.locator('button[data-rating="poor"]').focus();
     await page.keyboard.press('Enter');
     await waitFor(async () => (await boxState(page, 'img3')).pressed.poor === 'true', { message: 'Enter で評価できません' });
-    assert.deepEqual((await boxState(page, 'img3')).pressed, { good: 'false', fair: 'false', poor: 'true' });
+    assert.deepEqual((await boxState(page, 'img3')).pressed, { good: 'false', poor: 'true' });
   });
 
   test('評価ボタンで矢印キーを押しても、評価は変わらない（ラジオボタンのように動かない）', async () => {
@@ -89,6 +89,6 @@ describe('キーボードの操作', { timeout: 120000 }, () => {
     await page.keyboard.press('ArrowLeft');
     await page.keyboard.press('ArrowUp');
     await page.waitForTimeout(300);
-    assert.deepEqual((await boxState(page, 'img3')).pressed, { good: 'false', fair: 'false', poor: 'true' });
+    assert.deepEqual((await boxState(page, 'img3')).pressed, { good: 'false', poor: 'true' });
   });
 });

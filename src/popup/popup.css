@@ -16,7 +16,8 @@ p {
   margin: 0 0 8px;
 }
 
-p:empty {
+/* 読み上げ用の領域（#status）は、空でも常に表示しておく。隠れた状態から現れた領域は読み上げられないことがあるため */
+p:empty:not([role="status"]) {
   display: none;
 }
 

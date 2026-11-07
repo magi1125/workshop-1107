@@ -57,7 +57,7 @@ describe('評価と保存', { timeout: 180000 }, () => {
     await clickRating(page, 'linked', 'good');
     await waitFor(async () => (await boxState(page, 'linked')).pressed.good === 'true', { message: '良い が押した状態になりません' });
     const s = await boxState(page, 'linked');
-    assert.deepEqual(s.pressed, { good: 'true', fair: 'false', poor: 'false' });
+    assert.deepEqual(s.pressed, { good: 'true', poor: 'false' });
   });
 
   test('評価は契約の形式のキーと値で保存される', async () => {
@@ -87,18 +87,18 @@ describe('評価と保存', { timeout: 180000 }, () => {
   });
 
   test('ほかの評価を押すと、押した状態と保存が切り替わる', async () => {
-    await clickRating(page, 'linked', 'fair');
-    await waitFor(async () => (await boxState(page, 'linked')).pressed.fair === 'true', { message: '普通 が押した状態になりません' });
-    assert.deepEqual((await boxState(page, 'linked')).pressed, { good: 'false', fair: 'true', poor: 'false' });
+    await clickRating(page, 'linked', 'poor');
+    await waitFor(async () => (await boxState(page, 'linked')).pressed.poor === 'true', { message: '悪い が押した状態になりません' });
+    assert.deepEqual((await boxState(page, 'linked')).pressed, { good: 'false', poor: 'true' });
     const key = storageKey(pageUrl, h.url('img/linked.png?v=1'), '次の記事へ');
-    const { value } = await waitRecord(key, (v) => v && v.rating === 'fair');
-    assert.equal(value.rating, 'fair');
+    const { value } = await waitRecord(key, (v) => v && v.rating === 'poor');
+    assert.equal(value.rating, 'poor');
   });
 
   test('押した評価をもう一度押すと取り消され、キーが削除される', async () => {
-    await clickRating(page, 'linked', 'fair');
-    await waitFor(async () => (await boxState(page, 'linked')).pressed.fair === 'false', { message: '取り消されません' });
-    assert.deepEqual((await boxState(page, 'linked')).pressed, { good: 'false', fair: 'false', poor: 'false' });
+    await clickRating(page, 'linked', 'poor');
+    await waitFor(async () => (await boxState(page, 'linked')).pressed.poor === 'false', { message: '取り消されません' });
+    assert.deepEqual((await boxState(page, 'linked')).pressed, { good: 'false', poor: 'false' });
     const key = storageKey(pageUrl, h.url('img/linked.png?v=1'), '次の記事へ');
     await waitRecord(key, (v) => v === undefined, 'キーが削除されません');
   });
@@ -119,14 +119,14 @@ describe('評価と保存', { timeout: 180000 }, () => {
   });
 
   test('alt属性の無い画像の記録', async () => {
-    await clickRating(page, 'noalt', 'fair');
+    await clickRating(page, 'noalt', 'good');
     const key = storageKey(pageUrl, h.url('img/noalt.png'), '');
     const { value } = await waitRecord(key);
     assert.equal(value.category, 'none');
     assert.equal(value.nameSource, 'none');
     assert.equal(value.altState, 'missing');
     assert.equal(value.alt, null);
-    assert.equal(value.rating, 'fair');
+    assert.equal(value.rating, 'good');
   });
 
   test('同じキーの評価ボックスが2つある時は、押した状態がそろう', async () => {
@@ -134,8 +134,8 @@ describe('評価と保存', { timeout: 180000 }, () => {
     await waitFor(async () => (await boxState(page, 'dup-2')).pressed.good === 'true', {
       message: 'もう一方の評価ボックスが押した状態になりません',
     });
-    assert.deepEqual((await boxState(page, 'dup-1')).pressed, { good: 'true', fair: 'false', poor: 'false' });
-    assert.deepEqual((await boxState(page, 'dup-2')).pressed, { good: 'true', fair: 'false', poor: 'false' });
+    assert.deepEqual((await boxState(page, 'dup-1')).pressed, { good: 'true', poor: 'false' });
+    assert.deepEqual((await boxState(page, 'dup-2')).pressed, { good: 'true', poor: 'false' });
     const key = storageKey(pageUrl, h.url('img/dup.png'), '同じ画像');
     await waitRecord(key, (v) => v && v.rating === 'good');
     // もう一方で変更しても、そろう
@@ -143,7 +143,7 @@ describe('評価と保存', { timeout: 180000 }, () => {
     await waitFor(async () => (await boxState(page, 'dup-1')).pressed.poor === 'true', {
       message: 'もう一方の評価ボックスの変更がそろいません',
     });
-    assert.deepEqual((await boxState(page, 'dup-1')).pressed, { good: 'false', fair: 'false', poor: 'true' });
+    assert.deepEqual((await boxState(page, 'dup-1')).pressed, { good: 'false', poor: 'true' });
     await waitRecord(key, (v) => v && v.rating === 'poor');
   });
 
@@ -158,13 +158,13 @@ describe('評価と保存', { timeout: 180000 }, () => {
     await h.enable(page);
     await waitForBoxCount(page, 5);
     const expect = {
-      linked: { good: 'false', fair: 'false', poor: 'false' },
-      embedded: { good: 'false', fair: 'false', poor: 'true' },
-      'dup-1': { good: 'false', fair: 'false', poor: 'true' },
-      'dup-2': { good: 'false', fair: 'false', poor: 'true' },
-      noalt: { good: 'false', fair: 'true', poor: 'false' },
+      linked: { good: 'false', poor: 'false' },
+      embedded: { good: 'false', poor: 'true' },
+      'dup-1': { good: 'false', poor: 'true' },
+      'dup-2': { good: 'false', poor: 'true' },
+      noalt: { good: 'true', poor: 'false' },
     };
-    await waitFor(async () => (await boxState(page, 'noalt')).pressed.fair === 'true', {
+    await waitFor(async () => (await boxState(page, 'noalt')).pressed.good === 'true', {
       message: '保存した評価が表示されません',
     });
     for (const [id, pressed] of Object.entries(expect)) {
@@ -182,14 +182,14 @@ describe('評価と保存', { timeout: 180000 }, () => {
     await h.enable(page);
     await waitForBoxCount(page, 5);
     await waitFor(async () => (await boxState(page, 'dup-2')).pressed.poor === 'true', { message: '保存した評価が表示されません' });
-    assert.deepEqual((await boxState(page, 'dup-1')).pressed, { good: 'false', fair: 'false', poor: 'false' });
+    assert.deepEqual((await boxState(page, 'dup-1')).pressed, { good: 'false', poor: 'false' });
   });
 
-  test('評価ボタンの名前は、押した後も「良い」「普通」「悪い」のまま', async () => {
+  test('評価ボタンの名前は、押した後も「良い」「悪い」のまま', async () => {
     const idx = await page.evaluate(() => window.__t.boxes().indexOf(window.__t.boxFor(document.getElementById('dup-2'))));
     const box = page.locator('alt-eval-box[data-alt-eval="box"]').nth(idx);
     assert.equal(await box.getByRole('button', { name: '悪い', exact: true, pressed: true }).count(), 1);
     assert.equal(await box.getByRole('button', { name: '良い', exact: true, pressed: false }).count(), 1);
-    assert.equal(await box.getByRole('button', { name: '普通', exact: true, pressed: false }).count(), 1);
+    assert.equal(await box.getByRole('button').count(), 2, 'ボタンは2つだけ');
   });
 });

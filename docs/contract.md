@@ -59,12 +59,11 @@
 ## 評価ボックスのDOM
 
 - ホスト要素は `<alt-eval-box data-alt-eval="box">` で、`mode: 'open'` のシャドウルートを持つ
-- ホスト要素の属性：`data-category`（`describe` の `category`）、`data-mode`（`'inline'` か `'collapsed'`）
+- ホスト要素の属性：`data-category`（`describe` の `category`）、`data-mode`（`'inline'` か `'compact'`）
 - シャドウルートの中：
   - `p.line`：1行目。`category` が `'named'` の時だけ `aria-hidden="true"`
-  - `div[role="group"][aria-label="直前の画像の評価"]`：3つのボタンのグループ
-  - `button[data-rating="good"]`、`[data-rating="fair"]`、`[data-rating="poor"]`：`type="button"`、`aria-pressed` 付き。アクセシブルネームは「良い」「普通」「悪い」
-  - `data-mode="collapsed"` の時だけ、`button.toggle`（`aria-expanded` 付き）がある。文字は、未評価なら「評価」、評価済みなら「評価：良い」のように評価を含める
+  - `div[role="group"][aria-label="直前の画像の評価"]`：2つのボタンのグループ
+  - `button[data-rating="good"]`、`[data-rating="poor"]`：`type="button"`、`aria-pressed` 付き。アクセシブルネームは「良い」「悪い」。画面には記号「○」「×」だけを表示する（記号は `aria-hidden="true"`）。「良い」「悪い」の文字は、通常表示でも小さい表示でも視覚的に隠す（読み上げには残す）
 
 ### 1行目の文字
 
@@ -87,12 +86,17 @@
 
 同じ基準の要素に複数の画像がある場合（リンクの中に画像が2枚ある場合など）は、評価ボックスを画像と同じ順番で並べます。
 
-### 折りたたむ条件
+### 小さい表示にする条件
 
 - 画像の表示上の幅か高さが48px未満
 - 通常表示の評価ボックスが、`overflow` が `hidden` か `clip` の祖先に切り取られる
 
-折りたたんだ時は、ホスト要素に `popover="manual"` を付けて最前面に表示し、画像の下に配置します。`button.toggle` を押すと、1行目とボタンのグループが表示されます。グループの中でEscキーを押すと閉じて、フォーカスが `button.toggle` に戻ります。
+小さい表示（`data-mode="compact"`）では、次のようにします。
+
+- ホスト要素に `popover="manual"` を付けて最前面に表示する（`:popover-open`）
+- 画像の実際に見えている部分（画像の矩形と、`overflow` が `hidden` か `clip` の祖先の矩形の重なり）の左上から、右と下に4pxずらした位置に置く
+- 最初から「○」「×」の2つのボタンを表示する。ボタンの大きさは28×28px以上
+- 1行目（`p.line`）は、最初は視覚的に隠す（`display: none` は使わず、読み上げには残す）。評価ボックスにマウスを重ねるか、評価ボックスの中にフォーカスがある間だけ表示する。表示している間にEscキーを押すと、マウスが離れるかフォーカスが外れるまで隠す
 
 ### 対象にしない画像
 
@@ -134,7 +138,7 @@
   - `pageUrl`：`location.href` から `#` 以降を除いたもの
   - `imageKey`：`imageUrl`。`embedded` の時は `'embedded'`
 - 値：`{ pageUrl, pageTitle, imageUrl, embedded, category, name, nameSource, altState, alt, linkUrl, rating, ratedAt }`
-  - `rating`：`'good'`、`'fair'`、`'poor'` のどれか
+  - `rating`：`'good'` か `'poor'`
   - `ratedAt`：ISO 8601の文字列
 
 評価を取り消したら、キーを削除します。同じキーの評価ボックスが複数ある場合は、すべての押した状態をそろえます。

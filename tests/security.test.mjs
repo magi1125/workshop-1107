@@ -81,12 +81,12 @@ describe('安全性', { timeout: 120000 }, () => {
       await sleep(300);
     }
     const box = await boxLocator(page, 'in-form');
-    await box.locator('button[data-rating="fair"]').focus();
+    await box.locator('button[data-rating="poor"]').focus();
     await page.keyboard.press('Enter');
     await sleep(800);
     assert.equal(page.url(), before, 'ページが移動しました');
     assert.equal(await page.evaluate(() => window.__submitted), 0, 'submit イベントが発生しました');
-    assert.equal((await boxState(page, 'in-form')).pressed.fair, 'true');
+    assert.equal((await boxState(page, 'in-form')).pressed.poor, 'true');
   });
 
   test('評価ボタンのクリックは、ページの document やクリックを拾う祖先のリスナーに届かない', async () => {
@@ -96,7 +96,7 @@ describe('安全性', { timeout: 120000 }, () => {
     });
     await clickRating(page, 'in-clickable', 'good');
     await waitFor(async () => (await boxState(page, 'in-clickable')).pressed.good === 'true', { message: '評価できません' });
-    await clickRating(page, 'in-clickable', 'fair');
+    await clickRating(page, 'in-clickable', 'poor');
     await sleep(300);
     const r = await page.evaluate(() => ({ doc: window.__docClicks, div: window.__divClicks }));
     assert.deepEqual(r, { doc: 0, div: 0 });

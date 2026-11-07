@@ -97,7 +97,7 @@ describe('評価ボックスの挿入', { timeout: 180000 }, () => {
     assert.deepEqual(r, ['名前：一枚目の画像（altから）', '読み上げられない画像（空のalt）']);
   });
 
-  test('ボタンのグループと3つのボタンが契約どおり', async () => {
+  test('ボタンのグループと2つのボタンが契約どおり', async () => {
     for (const [imgId] of EXPECTED) {
       const info = await page.evaluate((id) => {
         const box = window.__t.boxFor(document.getElementById(id));
@@ -112,31 +112,29 @@ describe('評価ボックスの挿入', { timeout: 180000 }, () => {
             type: b.getAttribute('type'),
             pressed: b.getAttribute('aria-pressed'),
           })),
-          hasToggle: !!root.querySelector('button.toggle'),
+          hasToggle: !!root.querySelector('button.toggle, [aria-expanded]'),
         };
       }, imgId);
       assert.equal(info.groupCount, 1, `#${imgId}：role="group" で aria-label="直前の画像の評価" の要素が1つ`);
-      assert.ok(info.inGroup, `#${imgId}：3つのボタンがグループの中にありません`);
+      assert.ok(info.inGroup, `#${imgId}：2つのボタンがグループの中にありません`);
       assert.deepEqual(
         info.buttons,
         [
           { rating: 'good', type: 'button', pressed: 'false' },
-          { rating: 'fair', type: 'button', pressed: 'false' },
           { rating: 'poor', type: 'button', pressed: 'false' },
         ],
         `#${imgId} のボタン`,
       );
-      assert.equal(info.hasToggle, false, `#${imgId}：通常表示に button.toggle があります`);
+      assert.equal(info.hasToggle, false, `#${imgId}：button.toggle か aria-expanded の要素があります`);
     }
   });
 
-  test('ボタンのアクセシブルネームは「良い」「普通」「悪い」、グループの名前は「直前の画像の評価」', async () => {
+  test('ボタンのアクセシブルネームは「良い」「悪い」、グループの名前は「直前の画像の評価」', async () => {
     const box = await boxLocator(page, 'plain');
     const group = box.getByRole('group', { name: '直前の画像の評価', exact: true });
     assert.equal(await group.count(), 1);
     for (const [rating, name] of [
       ['good', '良い'],
-      ['fair', '普通'],
       ['poor', '悪い'],
     ]) {
       const btn = group.getByRole('button', { name, exact: true });
@@ -153,7 +151,44 @@ describe('評価ボックスの挿入', { timeout: 180000 }, () => {
         return { rating: b.dataset.rating, w: r.width, h: r.height };
       });
     });
+    assert.equal(sizes.length, 2, 'ボタンの数');
     for (const s of sizes) assert.ok(s.w >= 44 && s.h >= 44, `${s.rating}：${s.w}×${s.h}`);
+  });
+
+  test('通常表示のボタンには、記号「○」「×」（aria-hidden="true"）だけが見え、文字「良い」「悪い」は画面から隠れて読み上げには残る', async () => {
+    const r = await page.evaluate(() => {
+      const box = window.__t.boxFor(document.getElementById('plain'));
+      const out = {};
+      for (const [rating, symbol, text] of [
+        ['good', '○', '良い'],
+        ['poor', '×', '悪い'],
+      ]) {
+        const b = box.shadowRoot.querySelector(`button[data-rating="${rating}"]`);
+        const sym = window.__t.textNodes(b, symbol);
+        const txt = window.__t.textNodes(b, text);
+        out[rating] = {
+          symbolCount: sym.length,
+          symbolHidden: sym.every((n) => !!n.parentElement.closest('[aria-hidden="true"]')),
+          symbolShown: sym.some((n) => window.__t.textShown(n)),
+          textCount: txt.length,
+          textShown: txt.some((n) => window.__t.textShown(n)),
+          textAriaHidden: txt.some((n) => !!n.parentElement.closest('[aria-hidden="true"]')),
+          // 記号が文字より前にある（文書の順）
+          symbolFirst:
+            sym.length > 0 && txt.length > 0 && !!(sym[0].compareDocumentPosition(txt[0]) & Node.DOCUMENT_POSITION_FOLLOWING),
+        };
+      }
+      return out;
+    });
+    for (const [rating, s] of Object.entries(r)) {
+      assert.equal(s.symbolCount, 1, `${rating}：記号がありません`);
+      assert.equal(s.symbolHidden, true, `${rating}：記号が aria-hidden="true" の中にありません`);
+      assert.equal(s.symbolShown, true, `${rating}：記号が見えません`);
+      assert.equal(s.textCount, 1, `${rating}：文字がありません`);
+      assert.equal(s.textAriaHidden, false, `${rating}：文字が aria-hidden です`);
+      assert.equal(s.textShown, false, `${rating}：通常表示で文字が画面に見えています（記号だけを見せる取り決め）`);
+      assert.equal(s.symbolFirst, true, `${rating}：記号が文字の前にありません`);
+    }
   });
 
   test('表示されていない画像、ページのシャドウDOMと iframe の中の画像には評価ボックスが無い', async () => {

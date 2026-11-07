@@ -114,13 +114,18 @@ describe('評価ボックスのアクセシビリティ', { timeout: 240000 }, (
       }
     });
 
-    test('グループと「良い」「普通」「悪い」のボタンが、評価ボックスの数だけツリーにある', () => {
+    test('グループと「良い」「悪い」のボタンが、評価ボックスの数だけツリーにある', () => {
       // 閉じた details の summary の中の画像の評価ボックスも、details の直後に入るためツリーにある
       const count = (role, name) => ax.filter((n) => n.role === role && n.name === name).length;
       assert.equal(count('group', '直前の画像の評価'), 17);
       assert.equal(count('button', '良い'), 17);
-      assert.equal(count('button', '普通'), 17);
       assert.equal(count('button', '悪い'), 17);
+      assert.equal(ax.filter((n) => n.role === 'button' && n.name === '普通').length, 0, '「普通」のボタンがあります');
+    });
+
+    test('記号「○」「×」は読み上げられない（aria-hidden）', () => {
+      const symbols = ax.filter((n) => /[○×]/.test(n.name));
+      assert.deepEqual(symbols, [], '記号を含むノードがツリーにあります');
     });
 
     test('閉じた details の summary の中の画像でも、評価ボックスが表示され、Tab キーで届く', async () => {
@@ -147,7 +152,7 @@ describe('評価ボックスのアクセシビリティ', { timeout: 240000 }, (
   });
 
   describe('axe-core', () => {
-    for (const fixture of ['boxes.html', 'simple.html', 'collapsed.html']) {
+    for (const fixture of ['boxes.html', 'simple.html', 'compact.html']) {
       test(`${fixture}：評価ボックスを入れても、axe-core の違反が増えない`, async (t) => {
         const page = await h.openFixture(fixture);
         try {
@@ -172,20 +177,74 @@ describe('評価ボックスのアクセシビリティ', { timeout: 240000 }, (
       });
     }
 
-    test('collapsed.html：「評価」ボタンを開いた状態でも、axe-core の違反が無い', async () => {
-      const page = await h.openFixture('collapsed.html');
+    test('compact.html：1行目を表示した状態（マウスとフォーカス）でも、axe-core の違反が増えない', async () => {
+      const page = await h.openFixture('compact.html');
       try {
         const baseline = await runAxe(page);
         await h.enable(page);
-        await waitForBoxCount(page, 4);
-        const box = await boxLocator(page, 'small');
-        await box.locator('button.toggle').click();
-        await page.waitForTimeout(200);
+        await waitForBoxCount(page, 8);
+        const small = await boxLocator(page, 'small');
+        await small.locator('button[data-rating="good"]').focus();
+        const card = await boxLocator(page, 'card-img');
+        await card.locator('button[data-rating="good"]').hover();
+        await page.waitForTimeout(300);
         const added = newViolations(baseline, await runAxe(page));
-        assert.deepEqual(added.map((v) => `${v.id} ${v.target}`), []);
+        assert.deepEqual(
+          added.map((v) => `${v.id} ${v.target}`),
+          [],
+          `拡張機能による axe-core の違反：\n${added.map((v) => `${v.id} ${v.target}\n  ${v.summary}`).join('\n')}`,
+        );
       } finally {
         await page.close();
       }
+    });
+  });
+
+  describe('小さい表示のアクセシビリティツリー', () => {
+    let page;
+    let ax;
+    let modes;
+    before(async () => {
+      page = await h.openFixture('compact.html');
+      await h.enable(page);
+      await waitForBoxCount(page, 8);
+      await page.mouse.move(1270, 890);
+      modes = await page.evaluate(() => window.__t.boxes().map((b) => b.getAttribute('data-mode')));
+      ax = await linearAXTree(page);
+    });
+    after(async () => page?.close());
+
+    test('前提：大きい画像の1つを除いて、小さい表示になっている', () => {
+      assert.deepEqual(modes.filter((m) => m === 'compact').length, 7, `data-mode：${JSON.stringify(modes)}`);
+    });
+
+    test('グループと「良い」「悪い」の2つのボタンが、評価ボックスの数だけツリーにある', () => {
+      const count = (role, name) => ax.filter((n) => n.role === role && n.name === name).length;
+      assert.equal(count('group', '直前の画像の評価'), 8);
+      assert.equal(count('button', '良い'), 8);
+      assert.equal(count('button', '悪い'), 8);
+      assert.equal(ax.filter((n) => n.role === 'button' && /^(良い|悪い)$/.test(n.name)).length, 16);
+      assert.deepEqual(ax.filter((n) => /[○×]/.test(n.name)), [], '記号を含むノードがツリーにあります');
+      assert.equal(ax.filter((n) => n.role === 'button' && /^評価/.test(n.name)).length, 0, '「評価」ボタンがあります');
+    });
+
+    test('1行目を視覚的に隠していても、空の名前・名前なしの画像の1行目は読み上げられる', () => {
+      const spoken = spokenText(ax).replace(/\n/g, '');
+      for (const text of ['読み上げられない画像（空のalt）', '名前なし（ファイル名が読み上げられる場合があります）']) {
+        assert.ok(spoken.includes(text), `読み上げられません：${text}`);
+      }
+    });
+
+    test('名前ありの画像の1行目（名前：…）は、小さい表示でも読み上げられない', () => {
+      const spoken = spokenText(ax);
+      assert.ok(!spoken.includes('名前：'), '名前ありの1行目が読み上げられます');
+    });
+
+    test('名前なしの画像の直後に、1行目、「直前の画像の評価」のグループの順に来る', async () => {
+      const i = ax.findIndex((n) => n.role === 'StaticText' && n.name.includes('名前なし（ファイル名が読み上げられる場合があります）'));
+      assert.ok(i >= 0, '1行目がツリーにありません');
+      const next = ax.slice(i + 1).find((n) => n.name !== '' && n.role !== 'generic' && n.role !== 'none' && n.role !== 'InlineTextBox');
+      assert.deepEqual(next && { role: next.role, name: next.name }, { role: 'group', name: '直前の画像の評価' });
     });
   });
 
@@ -245,7 +304,7 @@ describe('評価ボックスのアクセシビリティ', { timeout: 240000 }, (
         assert.ok(v.ratio >= 4.5, `${k}（押していない時）：${v.ratio.toFixed(2)}（文字 ${v.fg}、背景 ${v.bg}）`);
       }
       const box = await boxLocator(page, 'img1');
-      for (const r of ['good', 'fair', 'poor']) {
+      for (const r of ['good', 'poor']) {
         await box.locator(`button[data-rating="${r}"]`).click();
         await waitFor(async () => (await box.locator(`button[data-rating="${r}"]`).getAttribute('aria-pressed')) === 'true');
         await page.evaluate(() => window.__t.deepActive()?.blur());
