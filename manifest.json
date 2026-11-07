@@ -4,11 +4,12 @@
   "description": "__MSG_description__",
   "version": "0.1.0",
   "default_locale": "ja",
-  "minimum_chrome_version": "114",
+  "minimum_chrome_version": "116",
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "sidePanel"
   ],
   "optional_host_permissions": [
     "<all_urls>"
@@ -23,6 +24,9 @@
   "options_ui": {
     "page": "src/options/options.html",
     "open_in_tab": true
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel/sidepanel.html"
   },
   "commands": {
     "toggle-evaluation": {

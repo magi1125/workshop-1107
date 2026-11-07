@@ -25,9 +25,18 @@ describe('manifest.json', () => {
     assert.equal(readManifest().manifest_version, 3);
   });
 
-  test('permissions はちょうど activeTab・scripting・storage の3つ', () => {
+  test('permissions はちょうど activeTab・scripting・storage・sidePanel の4つ', () => {
     const m = readManifest();
-    assert.deepEqual([...(m.permissions || [])].sort(), ['activeTab', 'scripting', 'storage']);
+    assert.deepEqual([...(m.permissions || [])].sort(), ['activeTab', 'scripting', 'sidePanel', 'storage']);
+  });
+
+  test('side_panel.default_path は src/sidepanel/sidepanel.html', () => {
+    const m = readManifest();
+    assert.equal(m.side_panel?.default_path, 'src/sidepanel/sidepanel.html');
+    assert.ok(
+      fs.existsSync(path.join(REPO_ROOT, 'src', 'sidepanel', 'sidepanel.html')),
+      'src/sidepanel/sidepanel.html がありません',
+    );
   });
 
   test('実際の manifest.json に host_permissions が無い（<all_urls> はテスト用のコピーにだけ加える）', () => {

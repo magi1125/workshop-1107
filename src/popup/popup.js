@@ -9,6 +9,7 @@ const toggleEl = document.getElementById('toggle');
 const excludeEl = document.getElementById('exclude');
 const statusEl = document.getElementById('status');
 const optionsEl = document.getElementById('open-options');
+const sidePanelEl = document.getElementById('open-sidepanel');
 const shortcutEl = document.getElementById('shortcut');
 
 const EXCLUDE_LABEL = 'このサイトでは評価モードを使わない';
@@ -78,6 +79,15 @@ async function main() {
   optionsEl.addEventListener('click', () => chrome.runtime.openOptionsPage());
 
   const tab = await targetTab().catch(() => undefined);
+  // サイドパネルは、利用者の操作（クリック）の中で開く必要がある
+  sidePanelEl.addEventListener('click', () => {
+    chrome.sidePanel.open({ windowId: tab ? tab.windowId : chrome.windows.WINDOW_ID_CURRENT }).then(
+      () => window.close(),
+      () => {
+        statusEl.textContent = 'サイドパネルを開けませんでした';
+      },
+    );
+  });
   const kind = tab ? pageKind(tab) : null;
   if (!tab || kind === null) {
     modeEl.textContent = 'このページでは評価モードを使えません';

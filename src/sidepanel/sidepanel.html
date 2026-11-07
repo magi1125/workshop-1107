@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>alt通信簿：このページの画像</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <main>
+    <h1>このページの画像</h1>
+    <p id="page"></p>
+    <div class="mode">
+      <p id="mode">評価モード：確認しています</p>
+      <button id="toggle" type="button" hidden>評価モードをオンにする</button>
+    </div>
+    <p id="summary"></p>
+    <p class="filter" id="filter-row" hidden>
+      <label for="filter">表示する画像</label>
+      <select id="filter">
+        <option value="all">すべて</option>
+        <option value="unrated">未評価</option>
+        <option value="good">○ 良い</option>
+        <option value="poor">× 悪い</option>
+      </select>
+    </p>
+    <ol id="items" hidden></ol>
+    <p id="status" role="status"></p>
+  </main>
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

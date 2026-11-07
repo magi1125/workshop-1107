@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>サイドパネルのテスト</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; }
+  .ri { display: inline-block; width: 60px; height: 60px; background: #468; }
+  .spacer { height: 1600px; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="top">サイドパネルのテスト</h1>
+  <div id="dyn-top"></div>
+  <p><img id="sp-photo" src="/img/sp-photo.png" alt="山の写真" width="120" height="90"></p>
+  <p><img id="sp-noalt" src="/img/sp-noalt.png" width="120" height="90"></p>
+  <p><svg id="sp-svg" width="80" height="60"><title>グラフ</title><rect width="80" height="60" fill="#468"/></svg></p>
+  <p><span id="sp-ri" role="img" aria-label="星3つ" class="ri"></span></p>
+  <form action="/submitted" onsubmit="return false"><p><input id="sp-ii" type="image" src="/img/sp-ii.png" alt="検索" width="80" height="60"></p></form>
+  <div class="spacer"></div>
+  <p><img id="sp-far" src="/img/sp-far.png" alt="遠くの写真" width="120" height="90"></p>
+  <p>小さいアイコン：<img id="sp-icon" src="/img/sp-icon.png" alt="小さいアイコン" width="24" height="24"></p>
+  <div class="spacer"></div>
+  <ul id="dyn-list"></ul>
+  <p><a id="foot" href="#top">ページの先頭へ</a></p>
+</main>
+</body>
+</html>

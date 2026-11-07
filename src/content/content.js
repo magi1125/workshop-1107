@@ -59,6 +59,12 @@
     .compact .box {
       padding: 2px;
     }
+    /* サイドパネルの「ページの画像へ移動」で移動した評価ボックスを、しばらく強調する */
+    :host([data-revealed]) .box,
+    :host([data-revealed]) .badge {
+      outline: 4px solid #0b57d0;
+      outline-offset: 2px;
+    }
     .line {
       margin: 0 0 8px;
       overflow-wrap: anywhere;
@@ -205,6 +211,9 @@
     repositionScheduled: false,
     recheckRoots: new Set(),
     touchOpenBoxes: new Set(),
+    nextId: 1,
+    idOf: new WeakMap(), // 画像 -> 番号（評価ボックスを作り直しても変えない）
+    notifyTimer: 0,
     recheckTimer: 0,
     near: new Set(), // 画面の近くにある、小さい表示の画像
     intersection: null,
@@ -499,6 +508,11 @@
     host.dataset.altEval = 'box';
     host.dataset.category = info.category;
     host.dataset.mode = 'inline';
+    if (!state.idOf.has(img)) {
+      state.idOf.set(img, state.nextId);
+      state.nextId += 1;
+    }
+    host.dataset.id = String(state.idOf.get(img));
     setHostStyle(host, false);
     for (const type of STOPPED_EVENTS) {
       host.addEventListener(type, (event) => event.stopPropagation());
@@ -854,6 +868,8 @@
       state.intersection.unobserve(img);
       state.near.delete(img);
     }
+    state.touchOpenBoxes.delete(box);
+    clearTimeout(box.revealTimer);
     box.host.remove();
     state.boxes.delete(img);
   };
@@ -901,6 +917,7 @@
     for (const img of rebuild) {
       removeBox(img);
     }
+    const hadBox = new Set(rebuild.filter((img) => state.boxes.has(img)));
     const targets = rebuild.filter(isTarget);
     const added = targets.map(insertBox);
     // 先にすべて測ってから書き換える。小さい画像は印、切り取られる・覆われる評価ボックスは小さい表示にする
@@ -924,6 +941,12 @@
       repositionAll();
     }
     await restoreRatings(added);
+    // 作り直しただけの時は知らせない。新しく増えた・無くなった時だけ知らせる（カルーセルなどで知らせ続けないように）
+    const appeared = added.some((box) => !hadBox.has(box.img));
+    const vanished = [...hadBox].some((img) => !state.boxes.has(img));
+    if (appeared || vanished) {
+      notifyChanged();
+    }
   };
 
   // 表示の切り替えがあった範囲の画像を調べ直す。
@@ -978,7 +1001,7 @@
       return;
     }
     state.lastUrl = pageUrl();
-    restoreRatings([...state.boxes.values()]);
+    restoreRatings([...state.boxes.values()]).then(notifyChanged);
   };
 
   const schedule = (imgs) => {
@@ -1040,10 +1063,15 @@
       }
     }
     if (removed) {
+      let count = 0;
       for (const img of [...state.boxes.keys()]) {
         if (!img.isConnected) {
           removeBox(img);
+          count += 1;
         }
+      }
+      if (count > 0) {
+        notifyChanged();
       }
     }
     if (imgs.length > 0) {
@@ -1068,12 +1096,15 @@
 
   const isExcluded = async () => (await readSettings()).excludedSites.includes(location.hostname);
 
-  const rate = async (box, value) => {
+  // 押した評価をもう一度押すと取り消す
+  const rate = (box, value) => rateTo(box, box.rating === value ? null : value);
+
+  // 評価を next にする（null なら取り消す）。保存したら true を返す
+  const rateTo = async (box, next) => {
     // 使わないサイトに登録されたサイトでは、評価を保存しない
     if (await isExcluded()) {
-      return;
+      return false;
     }
-    const next = box.rating === value ? null : value;
     const info = describe(box.img);
     const key = storageKey(box.img, info);
     try {
@@ -1106,7 +1137,7 @@
       }
     } catch {
       announce('評価を保存できませんでした');
-      return;
+      return false;
     }
     box.info = info;
     box.key = key;
@@ -1115,6 +1146,55 @@
         applyRating(other, next);
       }
     }
+    notifyChanged();
+    return true;
+  };
+
+  // ---- サイドパネルとのやり取り（docs/contract.md の「サイドパネル」） ----
+
+  // サイドパネルなどに、評価ボックスや評価が変わったことを知らせる。続けて変わった時は200ミリ秒に1回にまとめる
+  const notifyChanged = () => {
+    if (state.notifyTimer) {
+      return;
+    }
+    state.notifyTimer = setTimeout(() => {
+      state.notifyTimer = 0;
+      try {
+        chrome.runtime.sendMessage({ type: 'altEval:changed' }).catch(() => {});
+      } catch {
+        // 拡張機能を読み込み直した後などは、送れなくても何もしない
+      }
+    }, 200);
+  };
+
+  const itemOf = (box) => ({
+    id: state.idOf.get(box.img),
+    element: box.info.element,
+    category: box.info.category,
+    line: lineText(box.info),
+    rating: box.rating,
+    mode: box.host.dataset.mode,
+  });
+
+  const boxById = (id) => [...state.boxes.values()].find((box) => state.idOf.get(box.img) === id) || null;
+
+  const listItems = () => [...state.boxes.values()].sort(inDocumentOrder).map(itemOf);
+
+  // 画像までスクロールし、評価ボックスを開いて、最初のボタンにフォーカスを移す
+  const reveal = (box) => {
+    box.img.scrollIntoView({ block: 'center' });
+    if (box.compact) {
+      box.touchOpen = true;
+      box.lineDismissed = false;
+      state.touchOpenBoxes.add(box);
+      box.updateLine();
+    }
+    box.ratingButtons[0].focus({ preventScroll: true });
+    box.host.dataset.revealed = '';
+    clearTimeout(box.revealTimer);
+    box.revealTimer = setTimeout(() => {
+      delete box.host.dataset.revealed;
+    }, 2000);
   };
 
   // ---- 評価モードの切り替え ----
@@ -1167,6 +1247,7 @@
       state.pending.add(img);
     }
     await flush();
+    notifyChanged();
     if (shouldAnnounce) {
       announce(`評価モードをオンにしました。画像は${state.boxes.size}枚です`);
     }
@@ -1200,6 +1281,8 @@
     for (const img of [...state.boxes.keys()]) {
       removeBox(img);
     }
+    state.touchOpenBoxes.clear();
+    notifyChanged();
     if (shouldAnnounce) {
       announce('評価モードをオフにしました');
     }
@@ -1224,6 +1307,33 @@
     }
     if (message.type === 'altEval:getState') {
       sendResponse(getState());
+      return false;
+    }
+    if (message.type === 'altEval:list') {
+      sendResponse({
+        enabled: state.enabled,
+        items: state.enabled ? listItems() : [],
+        title: document.title,
+        host: location.protocol === 'file:' ? '' : location.hostname,
+      });
+      return false;
+    }
+    if (message.type === 'altEval:rate') {
+      const box = boxById(message.id);
+      const rating = message.rating === 'good' || message.rating === 'poor' ? message.rating : null;
+      if (!box) {
+        sendResponse(null);
+        return false;
+      }
+      rateTo(box, rating).catch(() => false).then(() => sendResponse(itemOf(box)));
+      return true;
+    }
+    if (message.type === 'altEval:reveal') {
+      const box = boxById(message.id);
+      if (box) {
+        reveal(box);
+      }
+      sendResponse(Boolean(box));
       return false;
     }
     if (message.type === 'altEval:setEnabled') {

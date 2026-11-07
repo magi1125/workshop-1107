@@ -414,3 +414,71 @@ manifest.json には次を加えます。権限（`permissions`）は増やし�
 
 - 白い背景に、2pxの暗い枠線と、その外側に2pxの白い線を付け、明るいページでも暗いページでも見えるようにする
 - Windowsのハイコントラストモード（`forced-colors`）でも、枠線が見えるようにする
+
+---
+
+# サイドパネル
+
+企画書の「サイドパネル」の節について決めます。
+
+## ファイルとmanifest.json
+
+| ファイル | 役割 |
+|---|---|
+| `src/sidepanel/sidepanel.html`、`sidepanel.js`、`sidepanel.css` | サイドパネル。表示中のタブの画像の一覧と評価の状況 |
+
+manifest.json には次を加えます。
+
+- `permissions` に `sidePanel`（権限は `activeTab`・`scripting`・`storage`・`sidePanel` の4つになる）
+- `"side_panel": { "default_path": "src/sidepanel/sidepanel.html" }`
+
+## 開き方
+
+- ポップアップに「サイドパネルを開く」ボタン（`#open-sidepanel`）を加える。押すと `chrome.sidePanel.open({ windowId })` で、表示中のウィンドウのサイドパネルを開く
+- サイドパネルの対象は、表示中のウィンドウで選ばれているタブ。タブを切り替えた時（`chrome.tabs.onActivated`）と、タブの読み込みが終わった時（`chrome.tabs.onUpdated` の `status: 'complete'`）に、表示を更新する
+- `sidepanel.html?tabId={id}` で開いた時は、そのタブを対象にし、タブの切り替えには追従しない（自動テスト用）
+
+## content.js へのメッセージ
+
+| `type` | 送る内容 | 返る内容 |
+|---|---|---|
+| `altEval:list` | なし | `{ enabled, items }`。`items` は評価ボックスのDOMの順の配列で、各要素は `{ id, element, category, line, rating, mode }`。`id` は評価ボックスごとに付ける番号（ページを読み込み直すまで変わらない）。`line` は1行目の文字。`rating` は `'good'`・`'poor'`・`null`。`mode` は `data-mode` の値 |
+| `altEval:rate` | `{ id, rating }`（`rating` は `'good'`・`'poor'`・`null`） | 更新後の、その画像の `items` の要素。`id` が無ければ `null` |
+| `altEval:reveal` | `{ id }` | `true`（`id` が無ければ `false`） |
+
+- `altEval:rate` は、評価ボックスのボタンを押した時と同じように保存し、評価ボックスの押した状態もそろえる。`rating` が `null` の時は評価を取り消す。使わないサイトでは保存しない（評価ボックスと同じ）
+- `altEval:reveal` は、画像がページの縦の中央に来るようにスクロールし、評価ボックスを開いて（印の場合は、評価ボックスの外をマウスで押すかタッチするまで開いたままにする）、評価ボックスの最初のボタンにフォーカスを移す。評価ボックスのホスト要素には、2秒間、`data-revealed` 属性を付ける
+- 評価ボックスのホスト要素に、`data-id`（`id` と同じ番号）を付ける
+
+## content.js からの通知
+
+評価ボックスが増えた・減った、評価が変わった、評価モードを切り替えた時に、`chrome.runtime.sendMessage({ type: 'altEval:changed' })` を送る。続けて変化した時は、200ミリ秒に1回にまとめる。受け取る画面が無い時に起きるエラーは無視する。
+
+## サイドパネルの画面
+
+`<html lang="ja">`。上から次の順に並べる。
+
+1. `h1`「このページの画像」
+2. `#page`：ページのタイトルとホスト名
+3. `#mode`：「評価モード：オン」か「評価モード：オフ」。`button#toggle`（「評価モードをオンにする」・「評価モードをオフにする」）
+4. `#summary`：「画像 12枚（良い 3、悪い 2、未評価 7）」
+5. `select#filter`（ラベル「表示する画像」。値は `all`・`unrated`・`good`・`poor`）
+6. `ol#items`：画像ごとに `li` を1つ。中身は次のとおり
+   - `p.line`：1行目の文字。`img` 以外の要素では、設定画面と同じく「（svg要素）」などを後ろに加える
+   - `p.state`：「○ 良い」「× 悪い」「未評価」
+   - `button.rate-good`（文字「○ 良い」）、`button.rate-poor`（文字「× 悪い」）：`aria-pressed` 付き。押すと `altEval:rate` を送る。押した状態のボタンをもう一度押すと取り消す
+   - `button.reveal`（文字「ページの画像へ移動」）：押すと `altEval:reveal` を送る
+   - 3つのボタンには、`aria-describedby` で `p.line` を結び付け、どの画像のボタンかを伝える
+7. `#status`（`role="status"`）：評価した、取り消した、などの結果
+
+状態ごとの表示：
+
+| 状態 | 表示 |
+|---|---|
+| 評価モードを使えないページ（`chrome://`、Chromeウェブストアなど。評価モードのスクリプトが入っていない時は、何もしないスクリプトを `chrome.scripting.executeScript` で入れてみて、エラーの文字で判定する） | `#mode` に「このページでは評価モードを使えません」。`#toggle`、`#summary`、`#filter`、`#items` は表示しない |
+| 評価モードがオフ | `#summary` に「評価モードをオンにすると、画像の一覧を表示します」。`#filter` と `#items` は表示しない |
+| 評価モードがオンで、画像が無い | `#summary` に「このページに評価できる画像はありません」 |
+
+`#toggle` は、ポップアップと同じく `setEnabled` を使う。許可が無いタブ（ポップアップやショートカットを使っていないタブ）でオンにできなかった時は、`#status` に「ツールバーのボタンかショートカットで、評価モードをオンにしてください」と表示する。
+
+一覧を作り直す時に、一覧の中にフォーカスがあれば、同じ `id` の画像の同じボタンにフォーカスを戻す。
